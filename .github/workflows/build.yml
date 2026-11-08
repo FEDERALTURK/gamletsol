@@ -1,0 +1,30 @@
+name: Build GAMLETSOL APK
+
+# NOT: Bu ilk sürümde yalnızca derleme + analiz + test doğrulanıyor (debug
+# anahtarıyla imzalanmış bir APK üretir) — gerçek bir Google Cloud API
+# anahtarıyla uçtan uca davranış (mikrofon → STT → çeviri) DOĞRULANMADI, bu
+# yalnızca CI'da yapılabilecek bir şey değil (gerçek bir hesap/anahtar ve
+# gerçek mikrofon girdisi gerektirir). Bkz. README.md "Doğrulama durumu".
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.8"
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - run: flutter build apk --debug
+      - uses: actions/upload-artifact@v5
+        with:
+          name: gamletsol-debug-apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
