@@ -177,22 +177,34 @@ ilkesi):**
 - [x] `core-model` ve `core-pipeline`: bu kum havuzunda **gerçekten
       derlendi ve test edildi** (`./gradlew :core-model:test
       :core-pipeline:test` — 13 birim testi (2 Cue + 7 CaptionPipeline + 4
-      TvInputSelection), hepsi geçti; JDK 21 ile, CI'da ayrıca JDK 17 ile
-      doğrulanacak).
-- [ ] `feature-capture`, `app-mobile`, `app-tv`: **bu kum havuzunda yerel
-      olarak DERLENMEDİ** — ortamda Android SDK yok ve SDK lisanslarını
-      kabul etme izni bu oturumda verilmedi (`:app-tv:assembleDebug` da
-      aynı "SDK location not found" hatasıyla durdu — başka hiçbir yapı
-      hatası yok). Kod, resmi CameraX/ML Kit/Compose/`android.media.tv`
-      dokümantasyonuna göre yazıldı ama derlemesi doğrulanmadı; bu, CI'nın
-      (`.github/workflows/android.yml`, GitHub'ın hazır Android SDK'lı
-      runner'ında çalışır) ilk görevidir.
+      TvInputSelection), hepsi geçti; JDK 21 ile, CI'da JDK 17 ile de
+      **gerçekten tekrar doğrulandı**, aşağıya bakın).
+- [x] `feature-capture`, `app-mobile`, `app-tv`: **artık GERÇEK CI'da
+      derlendi** (`.github/workflows/android.yml`,
+      [run #42567524803](https://github.com/FEDERALTURK/gamletsol/actions/runs/42567524803) —
+      `success`): gerçek Android SDK ile derleme + lint (0 hata) +
+      `assembleDebug` başarılı, iki debug APK üretildi
+      (`app-mobile-debug.apk`, `app-tv-debug.apk`) ve CI artifact'leri
+      olarak indirildi/kullanıcıya teslim edildi. **Bu kum havuzunda hâlâ
+      yerel olarak derlenmedi** (Android SDK yok) — ama artık bu bir
+      varsayım değil, GitHub'ın gerçek runner'ında gerçekten çalıştı.
+      Yol boyunca 3 gerçek hata bulunup düzeltildi (kayıt için, dürüstlük
+      ilkesi): (1) `sdkmanager` ubuntu-latest'te PATH'te değilmiş →
+      `android-actions/setup-android@v3` eklendi; (2) o action'ın
+      varsayılan paket listesi artık var olmayan eski `tools` paketini
+      istiyordu → yalnızca `platform-tools` istendi; (3)
+      `MlKitTextRecognizer.kt`'deki `ImageProxy.image` kullanımı
+      `@ExperimentalGetImage` opt-in'i olmadan lint hatası veriyordu →
+      eklendi.
 - [ ] Gerçek bir Android cihazda kamera + OCR + çeviri + TTS uçtan uca hiç
-      denenmedi.
+      denenmedi — CI yalnızca derleme/lint/APK üretimini doğrular, çalışma
+      zamanı davranışını (kamera izni akışı, gerçek OCR sonucu, TTS sesi)
+      DOĞRULAMAZ.
 - [ ] Herhangi bir Android TV / Google TV cihazında HDMI passthrough
       üzerine yazı çizme (**G001-G006, P0** — güncel yol haritasının *tek*
-      önceliği) için `app-tv` probe APK'si yazıldı ama **gerçek donanımda
-      hiç çalıştırılmadı**. Bu kapı geçilmeden TV üstü çeviri özelliği
+      önceliği) için `app-tv` probe APK'si artık gerçekten derlendi ve
+      kullanıcıya teslim edildi, ama **gerçek donanımda hiç
+      çalıştırılmadı**. Bu kapı geçilmeden TV üstü çeviri özelliği
       "çalışıyor" sayılmaz; sonuçlar `docs/compatibility/hardware.md`'ye
       işlenecek.
 
