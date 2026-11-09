@@ -7,15 +7,20 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.viewModelScope
+import com.federalturk.gamletsol.core.model.GameProfile
+import com.federalturk.gamletsol.core.model.SampleGameProfiles
 import com.federalturk.gamletsol.core.pipeline.CaptionPipeline
+import com.federalturk.gamletsol.core.pipeline.TermPreservingTranslator
 import com.federalturk.gamletsol.feature.capture.CameraXFrameSource
 import com.federalturk.gamletsol.ocr.MlKitTextRecognizer
 import com.federalturk.gamletsol.speech.AndroidTtsSpeechOutput
+import com.federalturk.gamletsol.speech.TurkishVoiceStatus
 import com.federalturk.gamletsol.translate.MlKitTranslator
 import com.federalturk.gamletsol.tv.TvRelaySubtitleSink
 import com.federalturk.gamletsol.ui.PhoneScreenSubtitleSink
 import java.util.concurrent.Executors
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -102,9 +107,62 @@ class CaptionViewModel(application: Application) : AndroidViewModel(application)
         _tvConnectionState.value = TvConnectionState.DISCONNECTED
     }
 
+    // G031: etkin oyun profili (terim sözlüğü/ROI) — kullanıcı henüz hiçbir
+    // profil seçmemişse `null` (hiçbir terim korunmaz, yalnız sayılar — bkz.
+    // TermPreservingTranslator). Kalıcı depolama YOK; her uygulama açılışında
+    // sıfırlanır (bkz. GameProfileStore KDoc'u, henüz bir kalıcılık adaptörü
+    // eklenmedi).
+    private val _activeGameProfile = MutableStateFlow<GameProfile?>(null)
+    val activeGameProfile: StateFlow<GameProfile?> = _activeGameProfile.asStateFlow()
+
+    /** UI'nın (örn. bir ayarlar menüsü) seçilebilir örnek profilleri listelemesi için. */
+    val availableGameProfiles: List<GameProfile> = SampleGameProfiles.ALL
+
+    fun selectGameProfile(profile: GameProfile?) {
+        _activeGameProfile.value = profile
+    }
+
     private val cameraExecutor = Executors.newSingleThreadExecutor()
-    private val translator = MlKitTranslator()
+    private val rawTranslator = MlKitTranslator()
+
+    // G031: TermPreservingTranslator, sayıları HER ZAMAN ve (bir profil
+    // seçiliyse) profildeki buton/istatistik/isim terimlerini ML Kit'e
+    // vermeden önce maskeler, çeviri sonrası geri yükler (bkz. core-pipeline
+    // TermPreservingTranslator KDoc'u).
+    private val translator = TermPreservingTranslator(rawTranslator) { _activeGameProfile.value }
     private val speechOutput = AndroidTtsSpeechOutput(application)
+
+    private val _turkishVoiceStatusMessage = MutableStateFlow<String?>(null)
+    val turkishVoiceStatusMessage: StateFlow<String?> = _turkishVoiceStatusMessage.asStateFlow()
+
+    init {
+        // G032: TTS motoru asenkron başlatılıyor (TextToSpeech constructor'ı
+        // hazır olana kadar `ready=false`) — bu yüzden durum birkaç kez
+        // (kısa aralıklarla, en fazla ~2 sn) yoklanır; ilk "NotYetInitialized"
+        // durumunu geçtikten sonra durur. Gerçek bir Flow/callback yerine
+        // yoklama kullanıldı çünkü AndroidTtsSpeechOutput üçüncü taraf
+        // TextToSpeech API'sinin kendi callback'ine bağlı, buraya ayrı bir
+        // dinleyici eklemek gereksiz karmaşıklık katardı.
+        viewModelScope.launch {
+            repeat(10) {
+                val status = speechOutput.turkishVoiceStatus()
+                _turkishVoiceStatusMessage.value = describeVoiceStatus(status)
+                if (status !is TurkishVoiceStatus.NotYetInitialized) return@launch
+                delay(200)
+            }
+        }
+    }
+
+    private fun describeVoiceStatus(status: TurkishVoiceStatus): String? = when (status) {
+        is TurkishVoiceStatus.NotYetInitialized -> null
+        is TurkishVoiceStatus.Unavailable ->
+            "Bu cihazda kurulu bir Türkçe ses bulunamadı — altyazı yine de çalışır, sesli okuma yapılamaz."
+        is TurkishVoiceStatus.Available -> if (status.requiresNetwork) {
+            "Türkçe ses kurulu ama ağ bağlantısı gerektiriyor — çevrimdışıyken sesli okuma çalışmayabilir."
+        } else {
+            null // Normal/çevrimdışı çalışan ses kurulu — kullanıcıya ekstra bir uyarı göstermeye gerek yok.
+        }
+    }
 
     // sourceEpoch = ViewModel/uygulama oturumu başına sabit; kamera her
     // yeniden bağlandığında (konfigürasyon değişikliği vb.) ViewModel hayatta
@@ -140,7 +198,7 @@ class CaptionViewModel(application: Application) : AndroidViewModel(application)
 
         viewModelScope.launch {
             _pipelineStatus.value = PipelineStatus.DOWNLOADING_TRANSLATION_MODEL
-            val modelResult = runCatching { translator.ensureModelDownloaded() }
+            val modelResult = runCatching { rawTranslator.ensureModelDownloaded() }
             // NOT (dürüstlük ilkesi): Model indirme başarısız olsa bile
             // (ör. Wi-Fi yok) pipeline yine başlatılıyor — ML Kit modeli
             // hazır olana kadar sonraki `translate()` çağrıları askıda
@@ -167,7 +225,7 @@ class CaptionViewModel(application: Application) : AndroidViewModel(application)
     override fun onCleared() {
         super.onCleared()
         cameraExecutor.shutdown()
-        translator.close()
+        rawTranslator.close()
         speechOutput.shutdown()
         tvRelaySink.disconnect()
     }

@@ -10,10 +10,9 @@ data class Session(
     val targetLanguageCode: String = "tr",
 )
 
-/** Oyuna özgü, isteğe bağlı ayarlar (ROI ön ayarı, dublaj durumu vb.). */
-data class GameProfile(
-    val id: String,
-    val displayName: String,
-    val roiPreset: TextRegion? = null,
-    val hasVoiceDubPack: Boolean = false,
-)
+// NOT (G031, 2026-11-09): Bu dosyada önceden burada duran basit `GameProfile`
+// taslağı (yalnız id/displayName/roiPreset/hasVoiceDubPack) kaldırıldı —
+// hiçbir yerde kullanılmıyordu (yalnızca bir yer tutucuydu). Gerçek
+// GameProfile/TermOverride/GameProfileStore artık ayrı dosyalarda
+// (GameProfile.kt, GameProfileStore.kt, SampleGameProfiles.kt) ve
+// core-pipeline'daki TermPreservingTranslator ile birlikte tanımlı.

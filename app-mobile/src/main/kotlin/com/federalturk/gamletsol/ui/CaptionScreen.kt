@@ -84,6 +84,10 @@ fun CaptionScreen(
     val cue by viewModel.subtitleSink.activeCue.collectAsState()
     val status by viewModel.pipelineStatus.collectAsState()
     val tvConnectionState by viewModel.tvConnectionState.collectAsState()
+    // G032: Türkçe ses kurulu değilse veya ağ gerektiriyorsa kısa bir uyarı —
+    // `null` ise (ses normal/çevrimdışı çalışıyor ya da motor henüz
+    // başlatılıyor) hiçbir şey gösterilmez (bkz. CaptionViewModel KDoc'u).
+    val turkishVoiceStatusMessage by viewModel.turkishVoiceStatusMessage.collectAsState()
     var scanningQr by remember { mutableStateOf(false) }
 
     // G025: NSD/mDNS taraması — ekran açık olduğu sürece arka planda
@@ -192,7 +196,7 @@ fun CaptionScreen(
             if (granted && !translated.isNullOrBlank()) {
                 SubtitleOverlay(original = cue?.originalText, translated = translated)
             } else if (granted) {
-                StatusChip(status = status)
+                StatusChip(status = status, voiceStatusMessage = turkishVoiceStatusMessage)
             }
         }
     }
@@ -527,7 +531,7 @@ private fun TvConnectDialog(
 }
 
 @Composable
-private fun BoxScope.StatusChip(status: PipelineStatus) {
+private fun BoxScope.StatusChip(status: PipelineStatus, voiceStatusMessage: String? = null) {
     val text = when (status) {
         PipelineStatus.STARTING -> "Başlatılıyor…"
         PipelineStatus.DOWNLOADING_TRANSLATION_MODEL -> "Çeviri modeli indiriliyor (yalnızca ilk sefer, Wi-Fi gerekir)…"
@@ -543,6 +547,16 @@ private fun BoxScope.StatusChip(status: PipelineStatus) {
             .padding(12.dp),
     ) {
         Text(text = text, color = Color.White, style = MaterialTheme.typography.bodyMedium)
+        // G032: Türkçe ses eksikse/ağ gerektiriyorsa ikinci, daha küçük bir
+        // satır — altyazı metni YUKARIDA zaten gösterilmeye devam ediyor,
+        // bu satır yalnızca ek bilgi amaçlıdır.
+        if (voiceStatusMessage != null) {
+            Text(
+                text = voiceStatusMessage,
+                color = Color.White.copy(alpha = 0.85f),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
     }
 }
 

@@ -624,6 +624,67 @@ doğrulandı. Google Play Store'a özgü ayrı bir "yüksek çözünürlüklü s
 Store'da değil (bkz. "Kurulum ve Kullanım Kılavuzu" — APK'lar doğrudan
 sideload ile kuruluyor).
 
+### G031-G033 — Oyun profili/terim sözlüğü ve Türkçe TTS iyileştirmeleri (2026-11-09)
+
+Yol haritasının P4 fazından ("Kalite, TTS ve uzun oturum") üç kapı:
+
+- **G031 — Oyun profili ve terim sözlüğü.** `core-model`'e saf Kotlin
+  `GameProfile`/`TermOverride`/`GameProfileStore` eklendi (bu dosyadaki ESKİ,
+  hiçbir yerde kullanılmayan basit `GameProfile` taslağı — `Session.kt`
+  içindeydi — bu gerçek sürümle değiştirildi). `GameProfileStore`: bilinmeyen
+  bir `profileId`'yi silmek sessizce no-op'tur (hata fırlatmaz), ve eski bir
+  `schemaVersion` ile gelen bir profil otomatik olarak güncel şemaya taşınır
+  — ikisi de `GameProfileStoreTest`'te doğrulandı. `SampleGameProfiles` üç
+  türden (RPG/FPS/STRATEGY) örnek profil tanımlıyor; her biri buton adları
+  (RT/LB/X), istatistik kısaltmaları (HP/Armor/XP/Mana) ve örnek özel isimler
+  (Geralt/Ciri) içeriyor — kabul kriterindeki "üç oyun türü için terim ayarı"
+  budur. Bunları gerçek çeviriye bağlayan parça `core-pipeline`'daki YENİ
+  `TermPreservingTranslator` — bir `Translator` dekoratörü: metindeki
+  sayıları (HER ZAMAN, profilsiz de) ve etkin profildeki terimleri ML Kit'e
+  göndermeden önce yer tutucuyla maskeler, çeviri sonrası orijinal metinle
+  (veya `displayTerm` belirtilmişse onunla) geri yükler — kelime sınırı
+  (`\b`) kullanılır ki örn. "X" terimi "Explosion" gibi bir kelimenin içine
+  yanlışlıkla eşleşmesin. `app-mobile`'da `CaptionViewModel`, ML Kit
+  çeviricisini artık doğrudan değil bu dekoratörle sarmalanmış olarak
+  kullanıyor (`activeGameProfile`/`selectGameProfile` ile seçilebilir, ama bu
+  turda henüz bir profil-seçim EKRANI/UI'si eklenmedi — yalnızca
+  ViewModel API'si hazır, bir sonraki round'a kalan bir UI eksiği).
+- **G032 — Türkçe TTS motoru ve ses seçimi.** `AndroidTtsSpeechOutput`'a
+  `turkishVoiceStatus()` eklendi: kurulu bir Türkçe ses var mı
+  (`TextToSpeech.isLanguageAvailable`) ve varsa ağ bağlantısı gerektiriyor mu
+  (`Voice.isNetworkConnectionRequired`) sorgulanabiliyor. `CaptionViewModel`
+  bunu kısa bir yoklama ile okuyup `turkishVoiceStatusMessage` olarak
+  dışa veriyor; `CaptionScreen`'deki durum kutusunda (varsa) ikinci, küçük
+  bir uyarı satırı olarak gösteriliyor. Kabul kriterinin ikinci yarısı
+  ("ses yoksa altyazı çalışmaya devam eder") zaten `CaptionPipeline`'ın
+  tasarımından geliyordu — `speechOutput` tamamen ayrı ve isteğe bağlı bir
+  adım, `sinks.forEach { it.show(cue) }` her durumda çalışır — bu turda
+  yalnızca kullanıcıya GÖRÜNÜR hale getirildi, pipeline mantığı
+  değişmedi.
+- **G033 — TTS güncellik ve ses odağı.** `speak()` artık her çağrıda bir
+  `AudioFocusRequest` (geçici, `AUDIOFOCUS_GAIN_TRANSIENT`) istiyor —
+  reddedilirse (örn. bir telefon araması odağı tutuyorsa) hiç konuşmaya
+  başlamıyor; konuşma bitince/hata olunca (`UtteranceProgressListener`) odak
+  otomatik bırakılıyor; `stop()` de odağı bırakıyor. "Eski kuyruk
+  birikmesin" kriteri zaten mevcut `TextToSpeech.QUEUE_FLUSH` kullanımıyla
+  (ve `CaptionPipeline`'ın yalnızca GERÇEKTEN yeni cue'lar için `speak()`
+  çağırmasıyla) karşılanıyordu — bu turda değişmedi, sadece KDoc'ta açıkça
+  belgelendi.
+
+**Doğrulanmadı (dürüstlük ilkesi):** `GameProfile`/`GameProfileStore`/
+`TermPreservingTranslator` saf Kotlin'dir ve bu kum havuzunda GERÇEKTEN
+test edildi (`TermPreservingTranslatorTest`, yukarıdaki test sayısına
+dahil) — ama bu testler `FakeTranslator` ile, GERÇEK ML Kit modeliyle
+DEĞİL. Yer tutucu jetonun ("§0§" gibi) gerçek ML Kit çevirisi sırasında
+bozulmadan (boşluk eklenmeden, büyük/küçük harf değişmeden) hayatta kalıp
+kalmadığı hiç denenmedi. `AndroidTtsSpeechOutput`'taki ses durumu/ses odağı
+kodu Android'e özgüdür, bu modülde hiç testi yok (önceki sürümünde de
+yoktu) — yalnızca CI'nın gerçek `assembleDebug`+lint derlemesiyle
+doğrulandı; gerçek bir cihazda, gerçek bir Türkçe sesle veya gerçek bir
+kulaklık/Bluetooth çıkışıyla hiç denenmedi. Bir oyun profili SEÇME EKRANI
+henüz yok (yalnızca ViewModel API'si var) ve kalıcı profil depolama
+(DataStore/Room) henüz eklenmedi — `GameProfileStore` yalnız bellek-içi.
+
 ## Mimari pivotu (2026-11-09, ilk belge)
 
 Bu depo başlangıçta mikrofonla TV/konsol sesini dinleyip buluta gönderen bir
@@ -721,10 +782,12 @@ ilkesi):**
 - [x] `core-model`, `core-pipeline`, `core-pairing`, `core-transport`: bu
       kum havuzunda **gerçekten derlendi ve test edildi** (`./gradlew
       :core-model:test :core-pipeline:test :core-pairing:test
-      :core-transport:test` — 100 birim testi (2026-11-09, G026-G029
-      eklemeleriyle 66'dan 98'e, G029 kimlik kalıcılığı eklemesiyle
-      98'den 100'e; bkz. yukarıdaki "G026-G029" ve "G029 kimlik
-      kalıcılığı" bölümleri — 8 CaptionDisplaySettings + 6
+      :core-transport:test` — 111 birim testi (2026-11-09, G031
+      eklemesiyle 100'den 111'e — 6 yeni `GameProfileStoreTest` + 5 yeni
+      `TermPreservingTranslatorTest`; bkz. aşağıdaki "G031-G033" bölümü.
+      Önceki artış: G026-G029 eklemeleriyle 66'dan 98'e, G029 kimlik
+      kalıcılığı eklemesiyle 98'den 100'e; bkz. yukarıdaki "G026-G029" ve
+      "G029 kimlik kalıcılığı" bölümleri — 8 CaptionDisplaySettings + 6
       CueSequenceGuard + 1 TvEventServerReconnect + 5 yeni CueEventCodec
       doğrulama testi + 4 TrustedTvCodec + 8 TrustedTvRegistry + 2
       TvTlsIdentity.fromKeyManagers eklendi). Önceki sayım: 2 Cue +
