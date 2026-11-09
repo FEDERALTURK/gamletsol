@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  android:allowBackup zaten "false" olduğu için bu dosya hiçbir API
+  seviyesinde gerçekten OKUNMUYOR (yedekleme tamamen kapalı) — ama lint,
+  minSdk 26-30 aralığı için `android:fullBackupContent`'in de (12 öncesi
+  biçim) ayrıca belirtilmesini bekliyor; bu yüzden data_extraction_rules.xml
+  ile aynı "hiçbir şeyi yedekleme" niyetini burada da tekrarlıyoruz.
+-->
+<full-backup-content>
+    <exclude domain="root" />
+</full-backup-content>
