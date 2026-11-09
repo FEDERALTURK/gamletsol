@@ -1,0 +1,59 @@
+name: Build GAMLETSOL native (Kotlin/Compose)
+
+# NOT (dürüstlük ilkesi): Bu CI yalnızca derleme + lint + birim testlerini
+# doğrular (debug APK üretir). Gerçek bir Android cihazda/emülatörde kamera +
+# OCR + çeviri uçtan uca DOĞRULANMADI — bu yalnızca CI'da yapılabilecek bir
+# şey değil (gerçek kamera girdisi ve ML Kit model indirmesi gerektirir).
+# Bkz. kök README.md "Doğrulama durumu".
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+    paths-ignore:
+      - "legacy-flutter-mic-stt/**"
+  pull_request:
+    paths-ignore:
+      - "legacy-flutter-mic-stt/**"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # GitHub'ın ubuntu-latest imajında Android SDK önceden kurulu gelir
+      # (ANDROID_HOME ayarlı); yalnızca derlemenin ihtiyaç duyduğu platform/
+      # build-tools paketlerini garantiye alıyoruz.
+      - name: Ensure required Android SDK packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" >/dev/null
+
+      - name: Unit tests (core-model, core-pipeline)
+        run: ./gradlew :core-model:test :core-pipeline:test --stacktrace
+
+      - name: Lint (feature-capture, app-mobile)
+        run: ./gradlew :feature-capture:lintDebug :app-mobile:lintDebug --stacktrace
+
+      - name: Assemble debug APK
+        run: ./gradlew :app-mobile:assembleDebug --stacktrace
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: gamletsol-debug-apk
+          path: app-mobile/build/outputs/apk/debug/app-mobile-debug.apk
+
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: lint-reports
+          path: |
+            feature-capture/build/reports/lint-results-debug.html
+            app-mobile/build/reports/lint-results-debug.html

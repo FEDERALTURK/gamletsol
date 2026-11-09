@@ -1,0 +1,32 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Yakalama: kamerayı ekrana doğrultma (yol haritası "Yakalama" #1).
+         Konsol bağlantısı (MediaProjection) ileride ayrı bir izin akışıyla
+         eklenecek. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="true" />
+
+    <application
+        android:allowBackup="false"
+        android:label="GAMLETSOL"
+        android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+        android:usesCleartextTraffic="false">
+
+        <!-- Gizlilik ilkesi (bkz. kök README.md / yol haritası "Gizlilik
+             ilkesi"): kamera görüntüsü asla sunucuya yüklenmez; yalnız OCR
+             ile çıkarılan altyazı metni, kullanıcı çeviriyi açtıysa ML Kit'in
+             cihaz-üstü modeline (varsayılan) ya da ileride bir bulut çeviri
+             servisine (P6, ayrı onay gerektirir) gider. -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+            android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
+            android:screenOrientation="portrait">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

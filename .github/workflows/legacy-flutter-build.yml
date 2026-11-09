@@ -1,0 +1,37 @@
+name: Build GAMLETSOL legacy Flutter APK (frozen)
+
+# NOT: Bu, dondurulmuş mikrofon+bulut-ASR mimarisidir (bkz.
+# legacy-flutter-mic-stt/README.md ve kök README.md "Mimari pivotu"). Aktif
+# geliştirme native Kotlin çekirdekte sürüyor (.github/workflows/android.yml).
+# Bu workflow yalnızca legacy klasörü değiştiğinde veya elle tetiklenince
+# çalışır; amaç eski kodun derlenebilir kalmasını doğrulamaktır, ileri
+# geliştirme için değil.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+    paths:
+      - "legacy-flutter-mic-stt/**"
+      - ".github/workflows/legacy-flutter-build.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: legacy-flutter-mic-stt
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.8"
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - run: flutter build apk --debug
+      - uses: actions/upload-artifact@v5
+        with:
+          name: gamletsol-legacy-debug-apk
+          path: legacy-flutter-mic-stt/build/app/outputs/flutter-apk/app-debug.apk

@@ -4,50 +4,40 @@
 *.pyc
 *.swp
 .DS_Store
-.atom/
-.build/
-.buildlog/
-.history
-.svn/
-.swiftpm/
-migrate_working_dir/
-
-# IntelliJ related
+.idea/
 *.iml
 *.ipr
 *.iws
-.idea/
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
-
-# Flutter/Dart/Pub related
-**/doc/api/
-**/ios/Flutter/.last_build_id
-.dart_tool/
-.flutter-plugins-dependencies
-.pub-cache/
-.pub/
+# --- Native Kotlin/Gradle (kök proje) ---
+# local.properties kişisel SDK yolunu tutar, asla depoya girmez.
+local.properties
+.gradle/
 /build/
-/coverage/
+*/build/
+.cxx/
+captures/
 
-# Symbolication related
-app.*.symbols
+# Yayın imzalama anahtarları — hiçbir zaman depoya girmez (bkz. kök README.md
+# "Doğrulama durumu" ve app-mobile/build.gradle.kts'teki imzalama notu).
+*.jks
+*.keystore
+key.properties
+release.properties
 
-# Obfuscation related
-app.*.map.json
-
-# Android Studio will place build artifacts here
-/android/app/debug
-/android/app/profile
-/android/app/release
-
-# Widget Preview related
-.widget_preview/
-
-# Firebase yapılandırması (proje kimlik bilgisi — depoya girmez, bkz.
-# docs/push_notifications_setup.md)
-/android/app/google-services.json
-/ios/Runner/GoogleService-Info.plist
+# --- legacy-flutter-mic-stt/ (dondurulmuş Flutter projesi) ---
+legacy-flutter-mic-stt/**/doc/api/
+legacy-flutter-mic-stt/.dart_tool/
+legacy-flutter-mic-stt/.flutter-plugins-dependencies
+legacy-flutter-mic-stt/.pub-cache/
+legacy-flutter-mic-stt/.pub/
+legacy-flutter-mic-stt/build/
+legacy-flutter-mic-stt/coverage/
+legacy-flutter-mic-stt/android/app/debug
+legacy-flutter-mic-stt/android/app/profile
+legacy-flutter-mic-stt/android/app/release
+legacy-flutter-mic-stt/android/local.properties
+legacy-flutter-mic-stt/android/key.properties
+legacy-flutter-mic-stt/android/beta-key.properties
+legacy-flutter-mic-stt/android/**/*.keystore
+legacy-flutter-mic-stt/android/**/*.jks

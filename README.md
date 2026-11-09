@@ -1,92 +1,106 @@
-# GAMLETSOL — TV/Konsol Sesi Canlı Çeviri (DENEYSEL)
+# GAMLETSOL — Game Translate Console
 
-"Game Translate Console" kısaltması. **Bağımsız bir Flutter uygulaması ve
-bağımsız bir depo** — başlangıçta `td2-loot-advisor` deposu altında bir
-alt-klasör olarak scaffold edildi, 2026-11-09'da kullanıcı isteğiyle kendi
-deposuna (`FEDERALTURK/gamletsol`) ayrıldı. TD2 Loot Advisor'ın mobil
-companion'ıyla (`td2-loot-advisor/mobile/`) hiçbir kod/yayın/mağaza bağımlılığı
-yoktur; yalnızca ilk sürümün mimari esini oradan alındı (bkz. "Ne yapar").
+Oyunların ekranda zaten gösterdiği İngilizce altyazıyı **OCR ile okuyup**
+Türkçeye çeviren Android uygulaması. Mimari ve yol haritası ayrıntıları için
+bkz. proje dokümanı: `GAMLETSOL — Yol Haritası ve Mimari Şema.md`.
 
-## Ne yapar
+## Mimari pivotu (2026-11-09)
 
-Telefonun **mikrofonuyla** TV/konsoldan çıkan sesi (oda sesi olarak) dinler,
-konuşmayı buluta gönderip metne çevirir (Google Cloud Speech-to-Text), sonra
-seçilen hedef dile çevirir (Google Cloud Translation API) ve ekranda hem
-orijinal hem çevrilmiş metni canlı altyazı olarak gösterir.
+Bu depo başlangıçta mikrofonla TV/konsol sesini dinleyip buluta gönderen bir
+Flutter uygulamasıydı. Yol haritası araştırması, gerçek Game Caption
+mekanizmasının mikrofon/ASR değil **ekran OCR'ı** olduğunu doğruladı. Buna
+göre:
 
-Bu, `td2-loot-advisor` deposundaki "Konsol Modu" (mobile/lib/console/) ile
-**karıştırılmamalı**:
-Konsol Modu kamerayla ekrandaki YAZIYI okur (OCR, cihaz-üstü, ücretsiz,
-internet gerektirmez). GAMLETSOL ise mikrofonla SESİ dinler (ASR, bulut API,
-ücretli, internet gerektirir) — konuşma/diyalog sesli ama ekranda yazı olarak
-görünmeyen içerikler için (örn. seslendirilmiş ara sahneler, canlı yayın,
-fiziksel bir TV/konsol).
+- **Aktif geliştirme** artık bu dizindeki **native Kotlin + Jetpack Compose**
+  projesindedir (aşağıya bakın).
+- Eski Flutter/mikrofon+bulut-ASR MVP'si **dondurulmuştur** ve
+  [`legacy-flutter-mic-stt/`](legacy-flutter-mic-stt/) altında arşivlenmiştir
+  — yalnızca referans/mimari ders amaçlı, üzerinde geliştirme yapılmıyor.
 
-## Mimari
+## Kapsam (özet)
 
-- **Dil/platform:** Flutter, **bilinçli olarak yalnızca Android** hedefliyor
-  (kullanıcı kararı, 2026-11-09). `ios/` klasörü yok, iOS desteği şu an
-  planda değil.
-- **Ses yakalama:** `record` paketi, `startStream` ile ham LINEAR16 (PCM16,
-  16kHz, mono) akışı — WAV başlığı gerekmiyor, Google STT'ye doğrudan
-  gönderiliyor.
-- **STT:** Google Cloud Speech-to-Text REST API (`v1/speech:recognize`) —
-  gerçek sürekli/düşük-gecikmeli "streaming recognize" DEĞİL; ~4 saniyelik
-  parçalar ayrı ayrı REST isteğiyle gönderiliyor (bkz. "Bilinen sınırlamalar").
-- **Çeviri:** Google Cloud Translation API v2 (`language/translate/v2`).
-- **API anahtarı:** Kullanıcı kendi Google Cloud API anahtarını Ayarlar
-  ekranından girer; `flutter_secure_storage` ile cihazda güvenli depoda
-  tutulur (Android Keystore) — asla koda, loga veya herhangi bir sunucuya
-  yazılmaz/gönderilmez.
+- **Yakalama:** kamerayı ekrana doğrultma (cihaz-bağımsız); konsol bağlantısı
+  (PS5/PS4/Xbox) ileride, lisans kararı onaylandıktan sonra.
+- **Görüntüleme:** telefon ekranı (bu ilk sürümün tek hedefi); Android TV,
+  Samsung Tizen, LG webOS ileride (karar kapıları G0 vb.).
+- **Gizlilik:** kamera görüntüsü asla sunucuya yüklenmez; yalnız OCR ile
+  çıkarılan altyazı metni, çeviri için kullanılır (varsayılan: ML Kit
+  cihaz-üstü, tamamen çevrimdışı).
 
-## Bilinen sınırlamalar (ilk sürüm, dürüstlük ilkesi)
+Tam kapsam, karar kapıları (G0-G5), riskler ve fazlı yol haritası (P0-P6) için
+`GAMLETSOL — Yol Haritası ve Mimari Şema.md` dosyasına bakın.
 
-- **Gerçek zamanlı akış değil, parçalı (chunked) işleme.** Her ~4 saniyede
-  bir ayrı bir STT isteği gönderiliyor — bu, Google'ın gerçek "streaming
-  recognize" (gRPC, kelime kelime canlı) API'sinden daha basit ama daha
-  yüksek gecikmeli. İleri sürümde gerçek streaming'e geçilebilir.
-  Not: Google'ın `v1/speech:recognize` (senkron, kısa ses) uç noktası resmî
-  dokümantasyondan doğrulandı; `v1p1beta1`/`v2` streaming gRPC API'si
-  henüz İNCELENMEDİ.
-- **Maliyetli.** Hem Speech-to-Text hem Translation API çağrı başına
-  ücretlidir (Google Cloud fiyatlandırması). Kullanıcı kendi API anahtarını
-  kullanır, kendi faturalandırmasından sorumludur.
-- **Gecikme yaklaşık 4-8 saniye** (parça süresi + ağ + API işleme) —
-  canlı bir konuşmayı gerçek zamanlı altyazılamaz, birkaç saniye arkadan
-  gelir.
-- **Arka plan gürültüsü/yankı** TV hoparlöründen mikrofona giden sesin
-  kalitesini düşürebilir; `autoGain`/`noiseSuppress` açık ama tam izolasyon
-  garanti edilmez.
-- **Uzun çalışma / pil tüketimi** test edilmedi.
+## Mimari (native çekirdek)
 
-## Doğrulama durumu (dürüstlük ilkesi — bkz. AGENTS.md)
+```
+gamletsol/
+├─ app-mobile/        # Android uygulaması: Compose UI, CameraX önizleme,
+│                      # ML Kit OCR/çeviri adaptörleri, TextToSpeech
+├─ core-model/         # Saf Kotlin — Cue, FrameRef, TextRegion, Session...
+├─ core-pipeline/      # Saf Kotlin — FrameSource/TextRecognizer/Translator/
+│                      # SubtitleSink/SpeechOutput arayüzleri + CaptionPipeline
+├─ feature-capture/    # Android kütüphanesi — CameraX tabanlı CameraSource
+└─ legacy-flutter-mic-stt/  # DONDURULMUŞ eski Flutter/mikrofon+ASR MVP'si
+```
 
-- [ ] `flutter analyze` / `flutter test` / `flutter build apk --debug` CI'da
-      geçti mi? (Bkz. DEVELOPMENT_LOG.md'deki ilgili CI run numarası.)
-- [ ] Gerçek bir Google Cloud API anahtarıyla uçtan uca denendi mi?
-      **HAYIR.** Bu kum havuzunda gerçek bir anahtar yok ve olmamalı —
-      kullanıcı kendi anahtarıyla gerçek bir cihazda denemelidir.
-- [ ] Gerçek bir TV/konsol sesiyle mikrofon testi yapıldı mı? **HAYIR.**
-- STT/Translate REST API'lerinin istek/yanıt şeması resmi Google Cloud
-  dokümantasyonundan doğrulandı (URL, alan adları) — ama gerçek bir ağ
-  çağrısıyla hiç denenmedi.
+`core-model` ve `core-pipeline` platformdan bağımsız saf Kotlin/JVM
+modülleridir — Android SDK olmadan da derlenip test edilebilirler.
+`feature-capture` ve `app-mobile` Android modülleridir (CameraX, ML Kit,
+Compose), bu nedenle yalnızca gerçek bir Android SDK ile (yerelde Android
+Studio, CI'da GitHub'ın hazır SDK'lı ubuntu-latest imajı) derlenebilirler.
 
-## Kurulum (kullanıcının yapması gereken)
+Henüz eklenmeyen modüller (ilgili karar kapısı onaylandığında veya ihtiyaç
+ortaya çıktığında eklenecek): `data-local` (Room/DataStore — kalıcı
+ayar/sözlük gerektiğinde), `feature-session` (TV eşleştirme/QR, P3),
+`app-tv`, `receiver-web`, `source-playstation`, `source-xbox`, `backend`
+(P6).
 
-1. [Google Cloud Console](https://console.cloud.google.com/)'da bir proje aç
-   (veya mevcut birini kullan).
-2. **Cloud Speech-to-Text API** ve **Cloud Translation API**'yi etkinleştir.
-3. Kimlik Bilgileri → API Anahtarı Oluştur. Güvenlik için anahtarı sadece bu
-   iki API'yle sınırlamanı öneririz.
-4. GAMLETSOL'u aç → Ayarlar → API anahtarını yapıştır → Kaydet.
-5. Ana ekranda TV/konsol sesinin dilini ve görmek istediğin dili seç,
-   "Dinlemeyi Başlat"a bas, mikrofon iznini ver.
+## İlk sürümün yaptığı (ve yapmadığı)
 
-## Henüz yapılmayanlar
+**Yapıyor (bu PR'daki ilk iskelet):**
+- CameraX ile kamera karelerini yakalar (`KEEP_ONLY_LATEST`).
+- ML Kit Latin Text Recognition ile cihaz-üstü OCR.
+- OCR çıktısını normalize eder, ardışık iki kare arasında fuzzy eşleşmeyle
+  "kararlı" metni belirler (tek bir yanlış OCR okuması yeni bir altyazı
+  doğurmaz).
+- Kararlı metni ML Kit Translation (cihaz-üstü, önceden indirilen en↔tr
+  modeli) ile çevirir, kimlik takibi (`cueId`/`seq`/TTL) ile tutarlı şekilde
+  telefon ekranında gösterir ve Türkçe TTS ile okur.
 
-- Gerçek düşük-gecikmeli streaming STT.
-- Whisper/Azure gibi alternatif STT sağlayıcıları (kullanıcı ileride
-  Google dışında bir seçenek isteyebilir).
-- iOS derlemesi/paketleme.
-- Play Store / beta imzalama (mobile/ projesindeki kalıcı anahtar düzeni
-  burada henüz yok — bkz. android/app/build.gradle.kts'teki not).
+**Henüz yapmıyor (bilinçli olarak sonraki fazlara bırakıldı — dürüstlük
+ilkesi):**
+- Gerçek görüntü düzeyinde ROI kırpma/döndürme/perspektif düzeltme — ilk
+  sürüm tam kareyi OCR'a verip bölgeye göre metin bloklarını filtreliyor
+  (daha basit, daha pahalı; bkz. `MlKitTextRecognizer` yorumları).
+- Kare-öncesi değişim algılama (OCR'ı her karede çalıştırmamak) — P2.
+- TV'ye yansıtma, konsol bağlantısı, Akıllı Ekran, dublaj paketleri — bkz.
+  yol haritası P3-P6.
+- Kalıcı ayarlar/oyun profilleri (`data-local`/Room).
+
+## Doğrulama durumu (dürüstlük ilkesi)
+
+- [x] `core-model` ve `core-pipeline`: bu kum havuzunda **gerçekten
+      derlendi ve test edildi** (`./gradlew :core-model:test
+      :core-pipeline:test` — 9 birim testi (2 + 7), hepsi geçti; JDK 21 ile,
+      CI'da ayrıca JDK 17 ile doğrulanacak).
+- [ ] `feature-capture` ve `app-mobile`: **bu kum havuzunda yerel olarak
+      DERLENMEDİ** — ortamda Android SDK yok ve SDK lisanslarını kabul etme
+      izni bu oturumda verilmedi. Kod, resmi CameraX/ML Kit/Compose
+      dokümantasyonuna göre yazıldı ama derlemesi doğrulanmadı; bu, CI'nın
+      (`.github/workflows/android.yml`, GitHub'ın hazır Android SDK'lı
+      runner'ında çalışır) ilk görevidir.
+- [ ] Gerçek bir Android cihazda kamera + OCR + çeviri + TTS uçtan uca hiç
+      denenmedi.
+- [ ] Profilo Android TV'de HDMI passthrough üzerine yazı çizme (G0) henüz
+      araştırılmadı/kodlanmadı — bu ilk iskelet yalnızca telefon ekranını
+      hedefliyor.
+
+## Geliştirme
+
+```bash
+./gradlew :core-model:test :core-pipeline:test   # platformdan bağımsız birim testleri
+./gradlew :app-mobile:assembleDebug              # debug APK (Android SDK gerektirir)
+```
+
+Legacy Flutter projesi için bkz.
+[`legacy-flutter-mic-stt/README.md`](legacy-flutter-mic-stt/README.md).
