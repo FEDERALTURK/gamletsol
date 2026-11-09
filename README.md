@@ -161,8 +161,9 @@ eksik kod) — hepsi roadmap'in G023 için açıkça istediği senaryoları
 - **Kamera ile QR TARAMA artık VAR** (bkz. aşağıdaki "Kamerayla QR
   eşleştirme" bölümü, 2026-11-09) — bu notun yazıldığı an itibariyle eksikti,
   şimdi tamamlandı; yine de gerçek donanımda hiç denenmedi.
-- **NSD (otomatik TV keşfi) YOK** — QR, IP/port'u elle yazma ihtiyacını
-  kaldırdı ama gerçek bir mDNS/NSD broadcast'i DEĞİL (G025 henüz eklenmedi).
+- **NSD (otomatik TV keşfi) artık VAR** (bkz. aşağıdaki "NSD/mDNS otomatik
+  keşif" bölümü, G025, 2026-11-09) — bu notun yazıldığı an itibariyle
+  eksikti, şimdi tamamlandı; QR ve manuel giriş yine de kalır (yedek yol).
 - **Reconnect/hatırlama YOK** (G028-G029) — her bağlantı için TV'de yeni
   bir kod üretilmesi gerekir, "bu TV'yi hatırla" özelliği yok.
 - Gerçek bir telefon ile gerçek bir TV arasında, gerçek bir Wi-Fi ağında
@@ -254,9 +255,10 @@ zxing ile gerçekten kare, hem karanlık hem açık hücreler içeren bir matris
   (parlaklık, açı, mesafe, ekran yansıması) okunup okunamadığı bu kum
   havuzunda **hiç denenmedi** — yalnızca kodlama/kod çözme mantığı birim
   test edildi, kamera/gerçek donanım yok.
-- QR, yalnızca IP/port/kodu taşır — bu hâlâ NSD/mDNS tabanlı gerçek bir
-  otomatik keşif DEĞİLDİR (G025 hâlâ eksik); QR'ı göstermek/taramak için
-  kullanıcı hâlâ ilgili ekranları açmalıdır.
+- QR, yalnızca IP/port/kodu taşır — NSD/mDNS tabanlı gerçek bir otomatik
+  keşif artık VAR (bkz. aşağıdaki "NSD/mDNS otomatik keşif" bölümü,
+  G025, 2026-11-09), ama QR ve bu manuel/elle-tarama yolu da yedek olarak
+  kalıyor.
 - G024 (TLS + sertifika fingerprint) artık eklendi — QR'ın sağladığı
   "fingerprint'i elle yazmaya gerek yok" imkanı tam olarak kullanıldı, bkz.
   bir aşağıdaki bölüm.
@@ -330,6 +332,110 @@ davranış olmadığı ayrıca doğrulandı.
   QR üzerinden gerçek dünyada taşınabildiği de dolaylı olarak doğrulanmamış
   sayılır.
 
+### Lint uyarılarının temizlenmesi (2026-11-09)
+
+CI'nın her zaman yeşil çıkardığı derleme/lint koşusu HATA vermiyordu, ama
+`app-mobile` 44, `app-tv` 3 lint UYARISI biriktirmişti (gerçek CI
+çalışmalarının `-reports` artifact'leri indirilip incelenerek bulundu).
+Gerçek kod/yapılandırma sorunu olan uyarılar düzeltildi:
+
+- **Eksik uygulama simgesi**: `app-mobile`'da hiç `res/` klasörü yoktu,
+  dolayısıyla `android:icon` ayarlanmamıştı. Her iki uygulama da artık
+  `app-tv`'nin zaten kullandığı yaklaşımla sistemin genel yer tutucu
+  simgesini (`@android:drawable/sym_def_app_icon`) kullanıyor — **gerçek
+  bir marka/logo tasarımı HENÜZ yok**, bu yalnızca lint'in "hiç simge yok"
+  uyarısını gidermek için.
+- **Eksik "data extraction rules"**: `android:allowBackup="false"` zaten
+  her türlü yedeklemeyi kapatıyor, ama Android 12+ için
+  `android:dataExtractionRules` ve minSdk 26-30 aralığı için de (eski
+  biçim) `android:fullBackupContent`'in AYRICA belirtilmesini lint
+  istiyor — her iki uygulamaya da "hiçbir şeyi yedekleme" diyen birer
+  `res/xml/data_extraction_rules.xml` + `res/xml/backup_rules.xml`
+  eklendi (gerçekte hiçbiri okunmuyor, çünkü yedekleme zaten tamamen
+  kapalı — salt lint uyumluluğu).
+- **Sabit ekran yönü uyarıları** (`LockedOrientationActivity` +
+  `DiscouragedApi`): telefon uygulamasının `portrait` (OCR akışı için
+  kasıtlı) ve TV uygulamasının `landscape` (TV'de döndürme kavramı yok)
+  sabitlemesi BİLİNÇLİ bir tasarım kararı — `tools:ignore` ile açık bir
+  Türkçe yorumla bastırıldı, kazara bir kısıtlama değil.
+- **Autoboxing uyarısı**: `app-tv/MainActivity.kt`'deki `nowMillis`
+  state'i `mutableStateOf<Long>` yerine `mutableLongStateOf` kullanacak
+  şekilde değiştirildi (gerçek bir performans iyileştirmesi, davranış
+  değişikliği yok).
+- **`TrustAllX509TrustManager` uyarısı** (Güvenlik kategorisi, ilk bakışta
+  en ciddi görünen): incelendiğinde bu uyarının BİZİM kodumuzdan
+  gelmediği, bağımlılık olarak eklenen `bcpkix-jdk18on-1.78.1.jar`'ın
+  İÇİNDEKİ bir sınıftan geldiği görüldü (lint, jar'ların `.class`
+  dosyalarını da tarıyor) — `core-transport`'un kendi `pinningTrustManager`
+  fonksiyonunun `checkServerTrusted`'ı ASLA boş değildir (G024'ün testleri
+  zaten bunu kanıtlıyor). Her iki modüle, bu ayrımı açıklayan bir yorumla
+  birlikte bu tek uyarıyı bastıran bir `lint.xml` eklendi.
+
+**Bilerek DOKUNULMADI:** "Obsolete Gradle Dependency" (33 öneri) ve
+"Obsolete Android Gradle Plugin Version" (6 öneri) — bunlar gerçek bir
+kod/yapılandırma sorunu değil, yalnızca kullanılan kütüphanelerin/AGP'nin
+daha yeni sürümlerinin var olduğu bildirimi. Bu kum havuzunda Android
+SDK/gerçek derleme olmadığı için (yalnızca CI'da derlenebiliyor) birden
+çok kütüphane sürümünü toptan yükseltmek, tek tek CI'da doğrulanana kadar
+geriye dönük uyumluluk riski taşır — ayrı, küçük adımlarla denenmesi
+gereken bir iş, lint "temizliği" kapsamına dahil edilmedi.
+
+**Sonuç (gerçek CI'da doğrulandı, run #42594586779):** `app-mobile` 44→39
+uyarı (kalan 39'u tamamen yukarıdaki "bilerek dokunulmadı" sürüm önerileri),
+`app-tv` 3→0 uyarı.
+
+### NSD/mDNS otomatik keşif (G025, 2026-11-09)
+
+Roadmap'in G025 adımı: TV'yi aynı yerel ağda otomatik olarak bulma
+(elle IP/port girme ya da QR tarama ZORUNLULUĞUNU kaldırma). Gerçek
+Android `NsdManager`'ı (mDNS/DNS-SD) kullanılarak eklendi:
+
+- **`core-transport`** (saf Kotlin/JVM): `TvNsdAttributes` — eşleştirme
+  kodu + TLS fingerprint'i + protokol sürümünü, gerçek
+  `NsdServiceInfo.setAttribute`/`attributes`'in beklediği
+  `Map<String, ByteArray>` TXT kayıt biçimine kodlar/çözer; `DiscoveredTv`
+  — çözümlenmiş bir TV'nin (serviceName/host/port/pairingCode/fingerprint)
+  saf veri sınıfı. Servis türü sabiti: `_gamletsol._tcp.`.
+- **`app-tv`**: `TvNsdAdvertiser`, gerçek `NsdManager.registerService` ile
+  bu TV'yi ağda reklam eder; `MainActivity` her yeni eşleştirme kodu
+  üretildiğinde (ilk açılış veya "Yeni eşleştirme kodu oluştur" düğmesi)
+  reklamı günceller (Android'in NSD API'si mevcut bir kaydı YERİNDE
+  güncellemeyi desteklemediği için önce kaldırıp sonra yeniden kaydeder).
+  Ekranda "Otomatik keşif (NSD): ... yayında" satırı eklendi.
+- **`app-mobile`**: `TvNsdDiscoverer`, gerçek
+  `NsdManager.discoverServices`/`resolveService` ile ağdaki
+  `_gamletsol._tcp` servislerini tarar ve çözümler. "TV'ye Yansıt"
+  diyaloğu artık bulunan TV'leri bir liste olarak gösterir — birine
+  dokunmak, QR ile aynı güvenlik seviyesinde (fingerprint pinlenerek)
+  doğrudan bağlanır. QR ve manuel giriş KALDIRILMADI — NSD'nin
+  engellendiği/desteklenmediği ağlar (bazı misafir ağları/router'lar mDNS
+  trafiğini filtreler) için yedek yol olarak kalıyorlar; NSD başarısız
+  olursa kullanıcıya engelleyici bir hata gösterilmez, liste sadece boş
+  kalır.
+
+**Gerçekten doğrulanan:** `TvNsdAttributes.toTxtRecordMap()`/
+`fromTxtRecordMap()`'in round-trip çalıştığı, eksik/bozuk/ilgisiz bir TXT
+kayıt setini doğru reddettiği (7 yeni test, `TvNsdAttributesTest`) — bu,
+core-transport'u 24'ten 31 teste çıkardı. `TvNsdAdvertiser`/
+`TvNsdDiscoverer`'ın kendisi Android'e bağımlı olduğu için bu kum
+havuzunda unit test edilemedi (ama gerçek CI'da derlendi/lint geçti).
+
+**Doğrulanmadı / bilinçli MVP sınırları (dürüstlük ilkesi):**
+- Gerçek bir Android cihazda/TV'de NSD reklamı/taraması/çözümlemesi **hiç
+  denenmedi** — `NsdManager`'ın kendisi bu kum havuzunda hiçbir zaman
+  çalıştırılmadı (Android SDK yok); yalnızca TXT kayıt kodlama/kod çözme
+  mantığı (saf Kotlin) birim test edildi.
+- Bazı ev router'ları/misafir ağları mDNS (multicast) trafiğini
+  engeller — bu durumda NSD hiç çalışmaz, kullanıcı sessizce boş bir
+  "yakındaki TV'ler" listesiyle karşılaşıp QR/manuel girişe geçmek
+  zorunda kalır; bu senaryo gerçek bir ağda hiç test edilmedi.
+- `TvNsdAdvertiser.restart()`, mevcut kaydı kaldırıp yeniden kaydeder —
+  bu kısa pencerede TV ağda GÖRÜNMEZ olabilir (gerçek bir cihazda bu
+  pencerenin süresi/etkisi ölçülmedi).
+- Bu, G025'in roadmap'teki TAM kapsamı olabilir ya da olmayabilir
+  (örn. Samsung/LG TV'lere özel keşif mekanizmaları burada YOK) — bu
+  yalnızca genel Android TV/Google TV hedefi için.
+
 ## Mimari pivotu (2026-11-09, ilk belge)
 
 Bu depo başlangıçta mikrofonla TV/konsol sesini dinleyip buluta gönderen bir
@@ -390,12 +496,13 @@ Studio, CI'da GitHub'ın hazır SDK'lı ubuntu-latest imajı) derlenebilirler.
 Henüz eklenmeyen modüller (ilgili karar kapısı onaylandığında veya ihtiyaç
 ortaya çıktığında eklenecek) — isimler güncel yol haritasının (`docs/roadmap/`)
 önerdiği adlarla hizalandı: `data-local` (Room/DataStore — kalıcı ayar/sözlük/
-trusted-devices, P2-P3), `feature-tv-connect` (NSD/otomatik keşif, G025),
-`receiver-tizen`, `receiver-web`, `source-playstation`, `source-xbox` (X1-X4,
-koşullu), `backend/*` (P6-P7). `app-tv`, `core-transport` ve `core-pairing`
-artık eklendi (yukarıya bakın) — birlikte G022/G023/G024'ü tamamlıyor (TV
-yetenek sözleşmesi + tek kullanımlık eşleştirme kodu + TLS/fingerprint
-pinning); G025'teki otomatik keşif hâlâ eksik.
+trusted-devices, P2-P3), `receiver-tizen`, `receiver-web`, `source-playstation`,
+`source-xbox` (X1-X4, koşullu), `backend/*` (P6-P7). `app-tv`, `core-transport`
+ve `core-pairing` artık eklendi (yukarıya bakın) — birlikte G022/G023/G024/
+G025'i tamamlıyor (TV yetenek sözleşmesi + tek kullanımlık eşleştirme kodu +
+TLS/fingerprint pinning + NSD/mDNS otomatik keşif); `feature-tv-connect`
+adıyla ayrı bir modül açılmadı, NSD mantığı doğrudan `core-transport`/
+`app-tv`/`app-mobile`'a eklendi.
 
 ## İlk sürümün yaptığı (ve yapmadığı)
 
@@ -426,14 +533,15 @@ ilkesi):**
 - [x] `core-model`, `core-pipeline`, `core-pairing`, `core-transport`: bu
       kum havuzunda **gerçekten derlendi ve test edildi** (`./gradlew
       :core-model:test :core-pipeline:test :core-pairing:test
-      :core-transport:test` — 59 birim testi (2 Cue + 7 CaptionPipeline + 4
+      :core-transport:test` — 66 birim testi (2 Cue + 7 CaptionPipeline + 4
       TvInputSelection + 3 CueEventCodec + 4 TvEventServer/Client + 9
       PairingRegistry/Token + 4 QrMatrixEncoder + 9 PairingQrPayload (G024
       v2 dahil) + 8 TvEvent+Pairing el sıkışma (G024'ün 3 TLS/fingerprint
-      testi dahil) + 6 TvCapabilities + 3 SocketTvReceiverAdapter (G022),
-      hepsi geçti; soket kullanan testler gerçek 127.0.0.1 loopback
-      TCP/TLS bağlantıları üzerinden çalışır, mock değil — bu kum
-      havuzunda art arda 5 kez `--rerun-tasks` ile de doğrulandı). Bu
+      testi dahil) + 6 TvCapabilities + 3 SocketTvReceiverAdapter (G022) +
+      7 TvNsdAttributes (G025), hepsi geçti; soket kullanan testler gerçek
+      127.0.0.1 loopback TCP/TLS bağlantıları üzerinden çalışır, mock
+      değil — bu kum havuzunda art arda 5 kez `--rerun-tasks` ile de
+      doğrulandı). Bu
       testler yazılırken/koşulurken İKİ gerçek hata
       bulundu ve düzeltildi (dürüstlük ilkesi için kayıt): (1) istemcinin
       `connect()`'i sunucunun handshake'i GERÇEKTEN doğruladığını
@@ -468,6 +576,11 @@ ilkesi):**
       `assembleDebug` `DuplicateRelativeFileException` ile patladı → her iki
       app modülünün `packaging.resources.excludes` listesine bu yol eklendi
       (çalışma zamanı davranışını etkilemeyen, salt OSGi meta verisi).
+      Ayrıca (2026-11-09) CI'nın `-reports` artifact'leri indirilip
+      incelenerek lint UYARILARI (hata değil, build zaten başarılıydı)
+      temizlendi — bkz. yukarıdaki "Lint uyarılarının temizlenmesi"
+      bölümü; `app-mobile` 44→39, `app-tv` 3→0 uyarı (kalan 39'u bilerek
+      dokunulmayan kütüphane-sürümü önerileri).
 - [ ] Gerçek bir Android cihazda kamera + OCR + çeviri + TTS uçtan uca hiç
       denenmedi — CI yalnızca derleme/lint/APK üretimini doğrular, çalışma
       zamanı davranışını (kamera izni akışı, gerçek OCR sonucu, TTS sesi)
@@ -479,19 +592,22 @@ ilkesi):**
       çalıştırılmadı**. Bu kapı geçilmeden TV üstü çeviri özelliği
       "çalışıyor" sayılmaz; sonuçlar `docs/compatibility/hardware.md`'ye
       işlenecek.
-- [ ] Telefon↔TV bağlantısı (P3/G022-G024, `core-transport` + `core-pairing`
+- [ ] Telefon↔TV bağlantısı (P3/G022-G025, `core-transport` + `core-pairing`
       + "TV'ye Yansıt" menüsü): kod yazıldı, gerçek loopback soket/TLS
       testleriyle doğrulandı (eşleştirme kodu + yetenek sözleşmesi + QR
-      kodlama/kod çözme + TLS/fingerprint pinning dahil), ama **gerçek bir
-      telefon ile gerçek bir TV arasında, gerçek bir Wi-Fi ağında hiç
-      denenmedi** — QR'ın gerçek bir kamerayla gerçek bir TV ekranından
-      okunup okunamadığı, ve TLS el sıkışmasının gerçek ağ koşullarında
-      sorunsuz çalışıp çalışmadığı da dahil. Kanal artık şifreli ve QR
-      yolunda fingerprint pinlenir (G024 tamam), ama TLS kimliği KALICI
-      DEĞİLDİR (her başlatmada yeniden üretilir) ve gerçek otomatik keşif
-      (NSD/mDNS) hâlâ yok (G025) — bkz. yukarıdaki `core-pairing`/
-      `core-transport`/"Kamerayla QR eşleştirme"/"TLS + sertifika
-      fingerprint pinning" bölümleri.
+      kodlama/kod çözme + TLS/fingerprint pinning + NSD TXT kayıt kodlama/
+      kod çözme dahil), ama **gerçek bir telefon ile gerçek bir TV
+      arasında, gerçek bir Wi-Fi ağında hiç denenmedi** — QR'ın gerçek bir
+      kamerayla gerçek bir TV ekranından okunup okunamadığı, TLS el
+      sıkışmasının gerçek ağ koşullarında sorunsuz çalışıp çalışmadığı, ve
+      gerçek `NsdManager` reklamının/taramasının gerçek bir router'da
+      çalışıp çalışmadığı da dahil (bu üçü de hiçbir zaman gerçek Android
+      donanımında/ağında çalıştırılmadı). Kanal artık şifreli, QR/NSD
+      yolunda fingerprint pinlenir, ve TV'ler artık otomatik olarak
+      listelenebilir (G022-G025 tamam), ama TLS kimliği KALICI DEĞİLDİR
+      (her başlatmada yeniden üretilir, G028-G029 eksik) — bkz. yukarıdaki
+      `core-pairing`/`core-transport`/"Kamerayla QR eşleştirme"/"TLS +
+      sertifika fingerprint pinning"/"NSD/mDNS otomatik keşif" bölümleri.
 
 ## Geliştirme
 

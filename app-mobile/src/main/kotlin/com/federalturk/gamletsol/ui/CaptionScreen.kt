@@ -26,6 +26,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,6 +43,8 @@ import androidx.core.content.ContextCompat
 import com.federalturk.gamletsol.CaptionViewModel
 import com.federalturk.gamletsol.PipelineStatus
 import com.federalturk.gamletsol.TvConnectionState
+import com.federalturk.gamletsol.core.transport.DiscoveredTv
+import com.federalturk.gamletsol.tv.TvNsdDiscoverer
 import androidx.camera.view.PreviewView
 
 /**
@@ -81,6 +84,24 @@ fun CaptionScreen(
     val tvConnectionState by viewModel.tvConnectionState.collectAsState()
     var scanningQr by remember { mutableStateOf(false) }
 
+    // G025: NSD/mDNS taraması — ekran açık olduğu sürece arka planda
+    // çalışır (QR tarama/kamera ile ÇAKIŞMAZ, NsdManager kamerayı
+    // kullanmaz). Bulunan TV'ler "TV'ye Yansıt" diyaloğunda listelenir;
+    // hiçbiri bulunmazsa (NSD engellenmiş/desteklenmiyor) liste boş kalır
+    // ve kullanıcı QR/manuel girişe geri döner — bu bir hata DEĞİLDİR.
+    val context = LocalContext.current
+    val nsdDiscoverer = remember { TvNsdDiscoverer(context) }
+    var discoveredTvs by remember { mutableStateOf<List<DiscoveredTv>>(emptyList()) }
+    DisposableEffect(Unit) {
+        nsdDiscoverer.startDiscovery(
+            onDiscovered = { tv ->
+                discoveredTvs = discoveredTvs.filterNot { it.serviceName == tv.serviceName } + tv
+            },
+            onLost = { name -> discoveredTvs = discoveredTvs.filterNot { it.serviceName == name } },
+        )
+        onDispose { nsdDiscoverer.stopDiscovery() }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         if (scanningQr) {
             QrScannerScreen(
@@ -112,6 +133,11 @@ fun CaptionScreen(
                 onConnectToTv = { host, port, code -> viewModel.connectToTv(host, port, code, fingerprintSha256 = null) },
                 onDisconnectFromTv = viewModel::disconnectFromTv,
                 onStartQrScan = { scanningQr = true },
+                discoveredTvs = discoveredTvs,
+                // G025: NSD ile bulunan bir TV, fingerprint'i de TXT
+                // kaydından taşıdığı için QR ile aynı güvenlik seviyesinde
+                // bağlanır (gerçek MITM korumalı pinning).
+                onConnectDiscovered = { tv -> viewModel.connectToTv(tv.host, tv.port, tv.pairingCode, tv.fingerprintSha256) },
             )
 
             val translated = cue?.translatedText
@@ -132,6 +158,8 @@ private fun BoxScope.TopBar(
     onConnectToTv: (String, Int, String) -> Unit,
     onDisconnectFromTv: () -> Unit,
     onStartQrScan: () -> Unit,
+    discoveredTvs: List<DiscoveredTv>,
+    onConnectDiscovered: (DiscoveredTv) -> Unit,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     var dialog by remember { mutableStateOf<MenuDialog?>(null) }
@@ -213,6 +241,11 @@ private fun BoxScope.TopBar(
                 dialog = null
                 onStartQrScan()
             },
+            discoveredTvs = discoveredTvs,
+            onConnectDiscovered = {
+                dialog = null
+                onConnectDiscovered(it)
+            },
         )
         MenuDialog.SETUP -> InfoDialog(
             title = "Kurulum talimatları",
@@ -248,13 +281,15 @@ private fun BoxScope.TopBar(
 private enum class MenuDialog { TV_CONNECT, SETUP, PRIVACY, ABOUT }
 
 /**
- * "TV'ye Yansıt" diyaloğu — kullanıcının app-tv ekranında gördüğü IP:port'u
- * ve eşleştirme kodunu (G023) elle girip bağlanmasını, VEYA aynı bilgiyi
- * taşıyan QR'ı kamerayla tarayıp (2026-11-09) tek adımda doldurmasını
- * sağlar. Manuel giriş KALDIRILMADI — kameranın çalışmadığı/QR'ın
- * okunamadığı durumlar için gereken yedek yol olarak kalıyor (roadmap'in
- * zaten istediği manuel yol, G025). Bağlı olduğunda bağlantıyı kesme
- * seçeneği de burada gösterilir.
+ * "TV'ye Yansıt" diyaloğu — üç bağlanma yolu sunar: (1) G025'teki NSD/mDNS
+ * otomatik keşfinin bulduğu TV'lerden birine dokunmak (en basit yol,
+ * fingerprint de otomatik taşınır), (2) app-tv ekranındaki QR'ı kamerayla
+ * taramak (G023, fingerprint de dahil — G024), (3) IP/port/eşleştirme
+ * kodunu elle girmek (TV'nin kimliği pinlenmez, kanal yine de TLS ile
+ * şifrelidir). Manuel giriş KALDIRILMADI — NSD'nin engellendiği/
+ * desteklenmediği ağlar ve QR'ın okunamadığı durumlar için gereken yedek
+ * yol olarak kalıyor. Bağlı olduğunda bağlantıyı kesme seçeneği de burada
+ * gösterilir.
  */
 @Composable
 private fun TvConnectDialog(
@@ -264,6 +299,8 @@ private fun TvConnectDialog(
     onDisconnect: () -> Unit,
     onDismiss: () -> Unit,
     onStartQrScan: () -> Unit,
+    discoveredTvs: List<DiscoveredTv>,
+    onConnectDiscovered: (DiscoveredTv) -> Unit,
 ) {
     var host by remember { mutableStateOf("") }
     var portText by remember { mutableStateOf("48631") }
@@ -275,19 +312,32 @@ private fun TvConnectDialog(
         text = {
             Column {
                 Text(
-                    "TV uygulamasının (app-tv) ekranında gösterilen QR kodunu " +
-                        "kamerayla tarayın — IP/port/eşleştirme kodu otomatik " +
-                        "doldurulur. QR görünmüyorsa/okunamıyorsa aynı bilgiyi " +
-                        "aşağıya elle de girebilirsiniz. Telefon ve TV AYNI " +
-                        "Wi-Fi ağında olmalı. Eşleştirme kodu 60 saniye geçerlidir " +
-                        "ve tek kullanımlıktır — süresi geçerse TV'de \"Yeni " +
-                        "eşleştirme kodu oluştur\" düğmesine basın.\n\n" +
-                        "NOT: Bu bağlantının KENDİSİ şifrelenmemiştir (beta) — " +
-                        "kod yalnızca kimlik doğrulama sağlar; yalnızca ev " +
-                        "içi/güvendiğiniz bir ağda kullanın.",
+                    "Yakındaki bir TV otomatik bulunduysa aşağıda listelenir — " +
+                        "ona dokunmanız yeterli. Bulunmazsa (G025: bazı ağlarda " +
+                        "otomatik keşif engellenmiş olabilir), TV ekranındaki QR " +
+                        "kodunu kamerayla tarayın ya da aynı bilgiyi elle girin. " +
+                        "Telefon ve TV AYNI Wi-Fi ağında olmalı. Eşleştirme kodu " +
+                        "60 saniye geçerlidir ve tek kullanımlıktır — süresi " +
+                        "geçerse TV'de \"Yeni eşleştirme kodu oluştur\" " +
+                        "düğmesine basın.\n\n" +
+                        "NOT: Manuel girişte TV'nin kimliği doğrulanmaz (yine de " +
+                        "şifrelidir); otomatik keşif/QR ile bağlanıldığında " +
+                        "TV'nin kimliği de pinlenir (gerçek MITM koruması).",
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 if (connectionState != TvConnectionState.CONNECTED) {
+                    if (discoveredTvs.isNotEmpty()) {
+                        Text("Yakındaki TV'ler:", style = MaterialTheme.typography.bodySmall)
+                        discoveredTvs.forEach { tv ->
+                            Button(
+                                onClick = { onConnectDiscovered(tv) },
+                                enabled = connectionState != TvConnectionState.CONNECTING,
+                            ) {
+                                Text("${tv.serviceName} (${tv.host}:${tv.port})")
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
                     Button(onClick = onStartQrScan, enabled = cameraPermissionGranted) {
                         Text("QR ile tara")
                     }

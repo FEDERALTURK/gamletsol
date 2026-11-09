@@ -5,10 +5,11 @@ package com.federalturk.gamletsol.core.pairing
  * G023/G024 — "Tek kullanımlık QR eşleştirme" + "TLS/fingerprint"). Kamera
  * ile tarandığında telefonun elle girmesi gereken DÖRT alanı (IP, port,
  * eşleştirme kodu, TLS sertifika fingerprint'i) TEK adımda verir —
- * kullanıcı artık bunların hiçbirini elle yazmak zorunda değildir (bu,
- * G025'in istediği "otomatik keşif"in kendisi DEĞİL — gerçek NSD/mDNS
- * broadcast'i hâlâ yok; bu yalnızca QR üzerinden TEK SEFERLİK bir adres/
- * kimlik aktarımıdır).
+ * kullanıcı artık bunların hiçbirini elle yazmak zorunda değildir. (2026-
+ * 11-09 güncelleme: G025 artık eklendi — gerçek NSD/mDNS taraması
+ * `TvNsdAttributes`/`DiscoveredTv` ile bu dosyadan BAĞIMSIZ olarak çalışır;
+ * bu QR yine de kalır — NSD'nin engellendiği/desteklenmediği ağlar için
+ * yedek bir "tek seferlik adres/kimlik aktarımı" yolu olarak.)
  *
  * [fingerprintSha256] (2026-11-09, G024): TV'nin kendi-imzalı TLS
  * sertifikasının SHA-256 özeti ([com.federalturk.gamletsol.core.transport.TvTlsIdentity.fingerprintSha256Hex]).

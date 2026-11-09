@@ -37,7 +37,9 @@ import com.federalturk.gamletsol.core.pairing.PairingResult
 import com.federalturk.gamletsol.core.pairing.PairingToken
 import com.federalturk.gamletsol.core.pairing.QrMatrixEncoder
 import com.federalturk.gamletsol.core.transport.CueEvent
+import com.federalturk.gamletsol.core.transport.TvCapabilities
 import com.federalturk.gamletsol.core.transport.TvEventServer
+import com.federalturk.gamletsol.core.transport.TvNsdAttributes
 import com.federalturk.gamletsol.core.transport.TvTlsIdentity
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -65,17 +67,28 @@ import java.util.Locale
  *    olarak da gösterir — `app-mobile`'daki kamera tarayıcısı bunu
  *    okuyabilir, kullanıcı artık üç alanı elle yazmak ZORUNDA değildir
  *    (manuel giriş hâlâ var, bu yalnızca bir kısayol).
+ * 7. (G024, 2026-11-09) Bağlantı artık TLS ile şifreli; eşleştirme kodu/
+ *    QR, ek olarak TV'nin TLS sertifika fingerprint'ini de taşır
+ *    ([TvTlsIdentity]) — QR ile bağlanan telefonlar gerçek MITM korumalı
+ *    pinning kullanır.
+ * 8. (G025, 2026-11-09) [TvNsdAdvertiser] ile bu TV, gerçek Android
+ *    `NsdManager`'ı (mDNS/DNS-SD) üzerinden `app-mobile`'a otomatik olarak
+ *    reklam edilir — kod/fingerprint TXT kayıtlarında taşınır
+ *    ([TvNsdAttributes]). QR ve manuel giriş hâlâ çalışır; NSD yalnızca
+ *    bir kısayol, engellenmişse (bazı router'larda mDNS kapalı) sessizce
+ *    atlanır.
  *
  * NOT (dürüstlük ilkesi): #1-3 gerçek Profilo TV + Xbox donanımında HENÜZ
  * denenmedi (bkz. docs/compatibility/hardware.md). #4-#5'teki TCP sunucusu
  * ve eşleştirme mantığı gerçek loopback soket testleriyle doğrulandı
  * (core-transport + core-pairing modülleri) ama gerçek bir telefon ile
- * gerçek bir TV arasında, gerçek bir Wi-Fi ağında HENÜZ denenmedi. Kanal
- * hâlâ ŞİFRELENMEMİŞ — eşleştirme kodu yalnızca KİMLİK DOĞRULAMA sağlar,
- * G024'teki TLS/fingerprint doğrulaması hâlâ eklenmedi. #6'daki QR'ın
- * gerçek bir telefon kamerasıyla, gerçek bir TV ekranından (parlaklık,
- * açı, mesafe) okunabilirliği de HENÜZ denenmedi — yalnızca QR üretiminin
- * zxing ile birim test edilmiş doğruluğu kanıtlandı (core-pairing).
+ * gerçek bir TV arasında, gerçek bir Wi-Fi ağında HENÜZ denenmedi. #6'daki
+ * QR'ın gerçek bir telefon kamerasıyla, gerçek bir TV ekranından
+ * (parlaklık, açı, mesafe) okunabilirliği de HENÜZ denenmedi — yalnızca
+ * QR üretiminin zxing ile birim test edilmiş doğruluğu kanıtlandı
+ * (core-pairing). #8'deki gerçek NSD/mDNS reklamı/keşfi de gerçek bir ağda
+ * HİÇ denenmedi — yalnızca TXT kayıt kodlama/kod çözme mantığı birim test
+ * edildi (core-transport), NsdManager'ın kendisi burada hiç çalıştırılmadı.
  */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -117,6 +130,11 @@ private fun TvProbeScreen() {
     // P3/G022-G030 (MVP): telefondan gelen cue'ları dinleyen TCP sunucusu +
     // G023'teki eşleştirme kodu doğrulaması + G024'teki TLS. Activity canlı
     // olduğu sürece çalışır, DisposableEffect ile kapatılır.
+    // G025: NSD/mDNS reklamcısı — kod her değiştiğinde (bkz. aşağıdaki
+    // LaunchedEffect(currentToken, serverPort)) yeniden kaydedilir.
+    val nsdAdvertiser = remember { TvNsdAdvertiser(context) }
+    var nsdServiceName by remember { mutableStateOf<String?>(null) }
+
     DisposableEffect(Unit) {
         currentToken = pairingRegistry.issue()
         val server = TvEventServer(
@@ -125,7 +143,29 @@ private fun TvProbeScreen() {
         ) { cue -> receivedCue = cue }
         server.start()
         serverPort = server.boundPort
-        onDispose { server.stop() }
+        onDispose {
+            server.stop()
+            nsdAdvertiser.stop()
+        }
+    }
+
+    // G025: eşleştirme kodu her değiştiğinde (ilk üretim veya "Yeni
+    // eşleştirme kodu oluştur" düğmesi) NSD reklamını, yeni kod +
+    // fingerprint'i taşıyacak şekilde yeniden başlat.
+    LaunchedEffect(currentToken, serverPort) {
+        val port = serverPort
+        val token = currentToken
+        if (port != null && token != null) {
+            nsdAdvertiser.restart(
+                port = port,
+                attributes = TvNsdAttributes(
+                    pairingCode = token.value,
+                    fingerprintSha256 = tlsIdentity.fingerprintSha256Hex,
+                    protocolVersion = TvCapabilities.CURRENT.protocolVersion,
+                ),
+                onServiceNameChanged = { name -> nsdServiceName = name },
+            )
+        }
     }
 
     // Saat her saniye güncellenir — overlay'in canlı render edildiğini,
@@ -191,6 +231,12 @@ private fun TvProbeScreen() {
             Text(
                 text = "Telefondan bağlan: ${localIp ?: "IP bulunamadı"}:${serverPort ?: "…"}",
                 color = Color(0xFF4DD0E1),
+            )
+            Text(
+                text = "Otomatik keşif (NSD): " +
+                    (nsdServiceName?.let { "\"$it\" olarak yayında" }
+                        ?: "yayında değil (devre dışı/engelli olabilir — QR/manuel giriş hâlâ çalışır)"),
+                color = Color.Gray,
             )
 
             val token = currentToken
