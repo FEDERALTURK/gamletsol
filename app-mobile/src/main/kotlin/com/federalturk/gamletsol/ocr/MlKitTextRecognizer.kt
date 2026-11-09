@@ -1,5 +1,6 @@
 package com.federalturk.gamletsol.ocr
 
+import androidx.camera.core.ExperimentalGetImage
 import com.federalturk.gamletsol.core.model.TextRegion
 import com.federalturk.gamletsol.core.pipeline.RawImage
 import com.federalturk.gamletsol.core.pipeline.RecognizedText
@@ -28,6 +29,13 @@ class MlKitTextRecognizer : TextRecognizer {
 
     private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
 
+    // NOT: `ImageProxy.getImage()` CameraX'te deneysel/opt-in bir API
+    // (`@ExperimentalGetImage`) — gerçek bir CI lint çalıştırmasında bu
+    // opt-in eksikliği `UnsafeOptInUsageError` olarak YAKALANDI ve
+    // düzeltildi. Kullanımı CameraX'in kendi dokümantasyonundaki önerilen
+    // desenle aynı: `ImageProxy` kapatılana kadar (bkz.
+    // `ImageProxyRawImage.release()`) `Image` nesnesi geçerlidir.
+    @ExperimentalGetImage
     override suspend fun recognize(image: RawImage, region: TextRegion): RecognizedText? {
         val proxyImage = image as? ImageProxyRawImage
             ?: error("MlKitTextRecognizer yalnızca ImageProxyRawImage ile çalışır, alınan: ${image::class}")
