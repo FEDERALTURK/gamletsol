@@ -462,7 +462,12 @@ ilkesi):**
       istiyordu → yalnızca `platform-tools` istendi; (3)
       `MlKitTextRecognizer.kt`'deki `ImageProxy.image` kullanımı
       `@ExperimentalGetImage` opt-in'i olmadan lint hatası veriyordu →
-      eklendi.
+      eklendi. (4, G024'te bulundu/düzeltildi:) Bouncy Castle'ın üç modülü
+      (`bcprov`/`bcpkix`/`bcutil-jdk18on`) aynı
+      `META-INF/versions/9/OSGI-INF/MANIFEST.MF` yolunu taşıdığı için
+      `assembleDebug` `DuplicateRelativeFileException` ile patladı → her iki
+      app modülünün `packaging.resources.excludes` listesine bu yol eklendi
+      (çalışma zamanı davranışını etkilemeyen, salt OSGi meta verisi).
 - [ ] Gerçek bir Android cihazda kamera + OCR + çeviri + TTS uçtan uca hiç
       denenmedi — CI yalnızca derleme/lint/APK üretimini doğrular, çalışma
       zamanı davranışını (kamera izni akışı, gerçek OCR sonucu, TTS sesi)
