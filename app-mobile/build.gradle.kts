@@ -16,8 +16,12 @@ android {
         applicationId = "com.federalturk.gamletsol"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        // G039: versionCode/versionName artık kök build.gradle.kts'teki
+        // paylaşılan CI-farkında mantıktan geliyor — her CI APK'sı hangi
+        // GitHub Actions çalışmasından/commit'ten geldiğini kendi üstünde
+        // taşıyor (bkz. kök build.gradle.kts KDoc'u).
+        versionCode = rootProject.extra["gamletsolVersionCode"] as Int
+        versionName = "0.2.0+" + rootProject.extra["gamletsolBuildMetadata"]
     }
 
     buildFeatures {

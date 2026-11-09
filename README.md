@@ -756,6 +756,56 @@ Bu üçü de (G034-G036) `docs/roadmap/tasks/todo.md`'de BİLEREK
 işaretlenmedi — P4-2 kontrol noktası notu gerçek cihaz kanıtı istiyor ve
 G034 hiç başlanmadı.
 
+### P5 — Kapalı beta ve çekirdek yayın: durum (2026-11-09)
+
+P5'in çoğu görevi (G037, G038, G040-G042) `docs/roadmap/tasks/todo.md`'de
+G030'a ("Profilo TV ilk kabul matrisi, gerçek donanımda") bağımlı —
+G030 hâlâ sizin elinizde, bu yüzden bu görevler bu turda da başlanamadı.
+Sandbox'ta yapılabilen tek P5 görevi:
+
+- **G039 — CI ve sürüm paketleme.** Kabul kriterinin üç parçası:
+  1. *"Gerçek proje görevleriyle lint/unit/build çalışır"* — zaten
+     doğruydu (`.github/workflows/android.yml` gerçek
+     `:core-model:test ... :core-pipeline:test`, gerçek `lintDebug`,
+     gerçek `assembleDebug` çalıştırıyor, hiçbiri sahte/placeholder
+     görev değil).
+  2. *"Sürüm ve imzalama sırları korunur"* — zaten doğruydu: hiçbir
+     release-imzalama anahtarı/sırrı yok (yalnız debug anahtarıyla
+     imzalanıyor, bkz. `AGENTS.md` madde 3), bu yüzden korunması
+     gereken bir sır da yok; bu, gerçek bir mağaza yayını öncesi ayrı
+     bir iş olarak kalıyor.
+  3. *"Hatalı çekirdek testi yayını engeller"* — workflow'daki adımlar
+     TEK bir job içinde SIRAYLA çalışıyor (varsayılan `fail-fast`):
+     Unit testler → Lint → `assembleDebug` → APK yükleme → GitHub
+     Release. Bir adım başarısız olursa GitHub Actions sonraki adımları
+     ÇALIŞTIRMAZ — yani "latest" Release'e asla başarısız bir unit test
+     sonrası APK yüklenemez. Bu YENİ bir kod değil, workflow dosyasının
+     zaten baştan beri sahip olduğu bir özellik — bu turda yalnızca
+     açıkça doğrulanıp belgelendi.
+
+  Gerçekten EKSİK ve bu turda YAPILAN kısım: `versionCode`/`versionName`
+  önceden statik ve HİÇ DEĞİŞMEMİŞTİ (`1` / `"0.1.0"`, ilk commit'ten bu
+  yana — 30'dan fazla özellik round'u boyunca) — yani kurulu bir APK'nın
+  TAM OLARAK hangi commit'ten geldiğini anlamanın bir yolu yoktu. Kök
+  `build.gradle.kts`'e paylaşılan bir sürüm mantığı eklendi:
+  `versionCode` artık CI'da `GITHUB_RUN_NUMBER`'dan geliyor (her çalışma
+  kesinlikle artan bir sayı — Android'in "yeni APK eski APK'dan büyük
+  versionCode taşımalı" kuralını doğal olarak karşılıyor), `versionName`
+  artık `0.2.0+ci<run>.<kısa-git-sha>` biçiminde (örn.
+  `0.2.0+ci47.aa85d85`) — hem hangi CI çalışmasından hem hangi commit'ten
+  geldiğini taşıyor. `git` yoksa/depo değilse (örn. sizin senkron
+  klasörünüz) sessizce `"local"`e düşüyor, build'i hiç kırmıyor — bu kum
+  havuzunda `GITHUB_RUN_NUMBER` simüle edilip + gerçek git SHA okunarak
+  (`aa85d85`) hem CI hem yerel geri dönüş yolu doğrulandı
+  (`./gradlew :app-mobile:help :app-tv:help` ile, Android SDK olmadan da
+  Gradle script'inin kendisi hatasız çalıştı).
+
+  **Doğrulanmadı (dürüstlük ilkesi):** Gerçek bir CI çalışmasında üretilen
+  APK'nın gerçekten bu yeni `versionCode`/`versionName`'i taşıdığı yalnız
+  CI loguyla (derleme başarılı) doğrulanabilir — kurulu APK'nın
+  "Ayarlar → Uygulamalar"da gösterdiği sürüm metnini gerçek bir cihazda
+  görsel olarak kontrol etmek hâlâ sizin elinizde.
+
 ## Mimari pivotu (2026-11-09, ilk belge)
 
 Bu depo başlangıçta mikrofonla TV/konsol sesini dinleyip buluta gönderen bir
