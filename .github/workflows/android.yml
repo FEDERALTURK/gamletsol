@@ -44,8 +44,8 @@ jobs:
       - name: Ensure required Android SDK packages
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0" >/dev/null
 
-      - name: Unit tests (core-model, core-pipeline, core-transport)
-        run: ./gradlew :core-model:test :core-pipeline:test :core-transport:test --stacktrace
+      - name: Unit tests (core-model, core-pipeline, core-pairing, core-transport)
+        run: ./gradlew :core-model:test :core-pipeline:test :core-pairing:test :core-transport:test --stacktrace
 
       - name: Lint (feature-capture, app-mobile, app-tv)
         run: ./gradlew :feature-capture:lintDebug :app-mobile:lintDebug :app-tv:lintDebug --stacktrace

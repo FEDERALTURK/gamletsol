@@ -27,6 +27,7 @@ rootProject.name = "gamletsol"
 include(":app-mobile")
 include(":app-tv")
 include(":core-model")
+include(":core-pairing")
 include(":core-pipeline")
 include(":core-transport")
 include(":feature-capture")

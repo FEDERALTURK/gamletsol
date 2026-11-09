@@ -99,7 +99,7 @@ fun CaptionScreen(
 private fun BoxScope.TopBar(
     onShowOnboardingAgain: () -> Unit,
     tvConnectionState: TvConnectionState,
-    onConnectToTv: (String, Int) -> Unit,
+    onConnectToTv: (String, Int, String) -> Unit,
     onDisconnectFromTv: () -> Unit,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
@@ -213,19 +213,20 @@ private enum class MenuDialog { TV_CONNECT, SETUP, PRIVACY, ABOUT }
 
 /**
  * "TV'ye Yansıt" diyaloğu — kullanıcının app-tv ekranında gördüğü IP:port'u
- * elle girip bağlanmasını sağlar (bkz. roadmap P3, MVP: NSD/otomatik keşif
- * ve QR eşleştirme HENÜZ yok). Bağlı olduğunda bağlantıyı kesme seçeneği
- * de burada gösterilir.
+ * ve eşleştirme kodunu (G023) elle girip bağlanmasını sağlar (bkz. roadmap
+ * P3, MVP: NSD/otomatik keşif ve KAMERA İLE QR TARAMA HENÜZ yok — kod elle
+ * girilir). Bağlı olduğunda bağlantıyı kesme seçeneği de burada gösterilir.
  */
 @Composable
 private fun TvConnectDialog(
     connectionState: TvConnectionState,
-    onConnect: (String, Int) -> Unit,
+    onConnect: (String, Int, String) -> Unit,
     onDisconnect: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     var host by remember { mutableStateOf("") }
     var portText by remember { mutableStateOf("48631") }
+    var pairingCode by remember { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -233,9 +234,13 @@ private fun TvConnectDialog(
         text = {
             Column {
                 Text(
-                    "TV uygulamasının (app-tv) ekranında gösterilen IP adresini " +
-                        "ve port'u girin. Telefon ve TV AYNI Wi-Fi ağında olmalı.\n\n" +
-                        "NOT: Bu bağlantı şifrelenmemiştir (beta) — yalnızca ev " +
+                    "TV uygulamasının (app-tv) ekranında gösterilen IP adresini, " +
+                        "port'u ve eşleştirme kodunu girin. Telefon ve TV AYNI " +
+                        "Wi-Fi ağında olmalı. Eşleştirme kodu 60 saniye geçerlidir " +
+                        "ve tek kullanımlıktır — süresi geçerse TV'de \"Yeni " +
+                        "eşleştirme kodu oluştur\" düğmesine basın.\n\n" +
+                        "NOT: Bu bağlantının KENDİSİ şifrelenmemiştir (beta) — " +
+                        "kod yalnızca kimlik doğrulama sağlar; yalnızca ev " +
                         "içi/güvendiğiniz bir ağda kullanın.",
                 )
                 Spacer(modifier = Modifier.height(12.dp))
@@ -253,11 +258,18 @@ private fun TvConnectDialog(
                     enabled = connectionState != TvConnectionState.CONNECTING,
                 )
                 Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = pairingCode,
+                    onValueChange = { pairingCode = it },
+                    label = { Text("Eşleştirme kodu (TV'de gösterilen)") },
+                    enabled = connectionState != TvConnectionState.CONNECTING,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
                 val statusText = when (connectionState) {
                     TvConnectionState.DISCONNECTED -> "Bağlı değil."
                     TvConnectionState.CONNECTING -> "Bağlanılıyor…"
                     TvConnectionState.CONNECTED -> "Bağlandı ✓ — çeviriler artık TV'ye de gönderiliyor."
-                    TvConnectionState.FAILED -> "Bağlanılamadı — IP/port'u ve aynı ağda olduğunuzu kontrol edin."
+                    TvConnectionState.FAILED -> "Bağlanılamadı — IP/port/eşleştirme kodunu ve aynı ağda olduğunuzu kontrol edin."
                 }
                 Text(statusText)
             }
@@ -269,8 +281,8 @@ private fun TvConnectDialog(
                 Button(
                     onClick = {
                         val port = portText.toIntOrNull()
-                        if (host.isNotBlank() && port != null) {
-                            onConnect(host.trim(), port)
+                        if (host.isNotBlank() && port != null && pairingCode.isNotBlank()) {
+                            onConnect(host.trim(), port, pairingCode.trim())
                         }
                     },
                     enabled = connectionState != TvConnectionState.CONNECTING,

@@ -26,10 +26,16 @@ class TvRelaySubtitleSink : SubtitleSink {
     val isConnected: Boolean
         get() = client?.isConnected == true
 
-    /** Bloklayan bir soket bağlantısı dener — çağıran arka plan iş parçacığında (ör. Dispatchers.IO) çalıştırmalı. */
-    fun connectBlocking(host: String, port: Int): Boolean {
+    /**
+     * Bloklayan bir soket bağlantısı dener — çağıran arka plan iş
+     * parçacığında (ör. Dispatchers.IO) çalıştırmalı. [pairingCode]
+     * TV ekranında gösterilen eşleştirme kodudur (G023); yanlış/süresi
+     * geçmiş/tekrar kullanılmış bir kod da bu fonksiyonun `false`
+     * dönmesine yol açar (hangi nedenle reddedildiği ayrıştırılmaz).
+     */
+    fun connectBlocking(host: String, port: Int, pairingCode: String): Boolean {
         disconnect()
-        val newClient = TvEventClient.connect(host, port)
+        val newClient = TvEventClient.connect(host, port, pairingCode = pairingCode)
         client = newClient
         return newClient != null
     }

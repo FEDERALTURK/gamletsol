@@ -29,6 +29,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.runtime.DisposableEffect
 import com.federalturk.gamletsol.core.model.tv.TvInputSummary
 import com.federalturk.gamletsol.core.model.tv.selectPreferredHdmiPassthroughInput
+import com.federalturk.gamletsol.core.pairing.PairingRegistry
+import com.federalturk.gamletsol.core.pairing.PairingResult
+import com.federalturk.gamletsol.core.pairing.PairingToken
 import com.federalturk.gamletsol.core.transport.CueEvent
 import com.federalturk.gamletsol.core.transport.TvEventServer
 import kotlinx.coroutines.delay
@@ -48,12 +51,20 @@ import java.util.Locale
  * 4. Bir `TvEventServer` (core-transport) başlat ve telefondan gelen
  *    gerçek [CueEvent]'leri aynı overlay alanında göster — kullanıcının
  *    telefonda gireceği IP/port, ekranda gösterilir.
+ * 5. (G023) Bir `PairingRegistry` (core-pairing) ile 60 saniye geçerli,
+ *    tek kullanımlık bir eşleştirme kodu üretir ve geri sayımla gösterir;
+ *    `TvEventServer`'ın `validatePairingCode` doğrulayıcısı bu kayda
+ *    bağlanır — yanlış/süresi geçmiş/tekrar kullanılan bir kod artık
+ *    bağlantıyı reddeder.
  *
  * NOT (dürüstlük ilkesi): #1-3 gerçek Profilo TV + Xbox donanımında HENÜZ
- * denenmedi (bkz. docs/compatibility/hardware.md). #4'teki TCP sunucusu
- * gerçek loopback soket testleriyle doğrulandı (core-transport modülü)
- * ama gerçek bir telefon ile gerçek bir TV arasında, gerçek bir Wi-Fi
- * ağında HENÜZ denenmedi — ve şifreleme/eşleştirme doğrulaması YOK.
+ * denenmedi (bkz. docs/compatibility/hardware.md). #4-#5'teki TCP sunucusu
+ * ve eşleştirme mantığı gerçek loopback soket testleriyle doğrulandı
+ * (core-transport + core-pairing modülleri) ama gerçek bir telefon ile
+ * gerçek bir TV arasında, gerçek bir Wi-Fi ağında HENÜZ denenmedi. Kanal
+ * hâlâ ŞİFRELENMEMİŞ — eşleştirme kodu yalnızca KİMLİK DOĞRULAMA sağlar,
+ * G024'teki TLS/fingerprint doğrulaması hâlâ eklenmedi. Telefon tarafında
+ * KAMERA İLE QR TARAMA da henüz yok — kullanıcı kodu elle girer.
  */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -78,23 +89,35 @@ private fun TvProbeScreen() {
     var nowText by remember { mutableStateOf("") }
     var receivedCue by remember { mutableStateOf<CueEvent?>(null) }
     var serverPort by remember { mutableStateOf<Int?>(null) }
+    var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
     val localIp = remember { LocalIpAddress.find() }
 
-    // P3/G022-G030 (MVP): telefondan gelen cue'ları dinleyen TCP sunucusu.
-    // Activity canlı olduğu sürece çalışır, DisposableEffect ile kapatılır.
+    // G023: eşleştirme kodu kaydı — tek bir TvEventServer örneğiyle birlikte
+    // yaşar (bkz. aşağıdaki DisposableEffect).
+    val pairingRegistry = remember { PairingRegistry() }
+    var currentToken by remember { mutableStateOf<PairingToken?>(null) }
+
+    // P3/G022-G030 (MVP): telefondan gelen cue'ları dinleyen TCP sunucusu +
+    // G023'teki eşleştirme kodu doğrulaması. Activity canlı olduğu sürece
+    // çalışır, DisposableEffect ile kapatılır.
     DisposableEffect(Unit) {
-        val server = TvEventServer { cue -> receivedCue = cue }
+        currentToken = pairingRegistry.issue()
+        val server = TvEventServer(
+            validatePairingCode = { code -> pairingRegistry.validateAndConsume(code) == PairingResult.VALID },
+        ) { cue -> receivedCue = cue }
         server.start()
         serverPort = server.boundPort
         onDispose { server.stop() }
     }
 
     // Saat her saniye güncellenir — overlay'in canlı render edildiğini,
-    // dondurulmuş bir ekran görüntüsü olmadığını kanıtlamak için.
+    // dondurulmuş bir ekran görüntüsü olmadığını kanıtlamak için; aynı
+    // döngü, eşleştirme kodunun geri sayımını da güncel tutar.
     LaunchedEffect(Unit) {
         val fmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
         while (true) {
-            nowText = fmt.format(Date())
+            nowMillis = System.currentTimeMillis()
+            nowText = fmt.format(Date(nowMillis))
             delay(1_000)
         }
     }
@@ -151,6 +174,23 @@ private fun TvProbeScreen() {
                 text = "Telefondan bağlan: ${localIp ?: "IP bulunamadı"}:${serverPort ?: "…"}",
                 color = Color(0xFF4DD0E1),
             )
+
+            val token = currentToken
+            if (token != null) {
+                val remainingSeconds = ((token.issuedAtMillis + token.ttlMillis - nowMillis) / 1000)
+                    .coerceAtLeast(0)
+                if (remainingSeconds > 0) {
+                    Text(
+                        text = "Eşleştirme kodu: ${token.value}  (${remainingSeconds}s)",
+                        color = Color(0xFFFFD54F),
+                    )
+                } else {
+                    Text(text = "Eşleştirme kodunun süresi doldu — yeni kod oluşturun", color = Color(0xFFE5484D))
+                }
+            }
+            Button(onClick = { currentToken = pairingRegistry.issue() }) {
+                Text("Yeni eşleştirme kodu oluştur")
+            }
             Text(
                 text = "Durum: ${tuneStatus.name} · Giriş: ${selectedInput?.inputId ?: "bulunamadı"}",
                 color = Color.White,

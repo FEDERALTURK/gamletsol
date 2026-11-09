@@ -25,4 +25,11 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    // Yalnızca testlerde: core-pairing + core-transport'un gerçek bir soket
+    // üzerinden birlikte doğru çalıştığını kanıtlamak için (bkz.
+    // TvEventPairingHandshakeTest). core-transport'un ana kodu core-pairing'e
+    // BAĞIMLI DEĞİL — handshake doğrulayıcısı yalnızca bir (String) -> Boolean
+    // lambda'sıdır, çağıran taraf (app-tv) hangi doğrulama mantığını
+    // kullanacağına kendi karar verir.
+    testImplementation(project(":core-pairing"))
 }

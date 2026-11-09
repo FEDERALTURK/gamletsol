@@ -71,14 +71,18 @@ class CaptionViewModel(application: Application) : AndroidViewModel(application)
 
     /**
      * TV'ye bağlanmayı dener (bloklayan soket çağrısı `Dispatchers.IO`'da
-     * çalışır). Başarılı olursa, pipeline'ın ürettiği her yeni cue otomatik
-     * olarak [tvRelaySink] üzerinden TV'ye gönderilmeye başlar.
+     * çalışır). [pairingCode], TV ekranında gösterilen, tek kullanımlık
+     * eşleştirme kodudur (G023) — yanlış/süresi geçmiş bir kod da
+     * [TvConnectionState.FAILED] ile sonuçlanır (bağlanamama ile
+     * eşleştirme reddi ayrıştırılmaz, MVP sınırı). Başarılı olursa,
+     * pipeline'ın ürettiği her yeni cue otomatik olarak [tvRelaySink]
+     * üzerinden TV'ye gönderilmeye başlar.
      */
-    fun connectToTv(host: String, port: Int) {
+    fun connectToTv(host: String, port: Int, pairingCode: String) {
         viewModelScope.launch {
             _tvConnectionState.value = TvConnectionState.CONNECTING
             val connected = withContext(Dispatchers.IO) {
-                tvRelaySink.connectBlocking(host, port)
+                tvRelaySink.connectBlocking(host, port, pairingCode)
             }
             _tvConnectionState.value = if (connected) {
                 TvConnectionState.CONNECTED

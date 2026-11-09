@@ -87,16 +87,21 @@ class TvEventServerClientTest {
 
         s.stop()
 
-        // DÜZELTME (gerçek CI çalıştırmasında bulunan flaky test): soketin
-        // kapandığını (RST/FIN) işletim sisteminin fark etmesi anlık
-        // değildir — bu kum havuzunda rastlantıyla hemen oluyordu ama
-        // CI'nın daha hızlı/yoğun makinesinde art arda 5 hızlı gönderim
-        // arasında süre tanımadığı için hep "başarılı" dönüyordu (gerçek
-        // CI run'larında 2 kez AssertionError ile doğrulandı). Artık
-        // denemeler arasına gerçek bir bekleme süresi konuyor ve en fazla
-        // 2 saniye boyunca deneniyor.
+        // DÜZELTME (gerçek test çalıştırmalarında bulunan flaky test, 2
+        // kademede): (1) soketin kapandığını (RST/FIN) işletim sisteminin
+        // fark etmesi anlık değildir — art arda 5 hızlı gönderim arasında
+        // süre tanımadığı için hep "başarılı" dönüyordu (gerçek CI
+        // run'larında 2 kez AssertionError ile doğrulandı) → denemeler
+        // arasına bekleme eklendi. (2) `TvEventServer.stop()` artık
+        // istemci soketlerini `SO_LINGER(true,0)` ile ZORLA (RST) kapatıyor
+        // — bu normalde anında algılanır, ama kaynak yoğunluğu altında
+        // (ör. bu kum havuzunda art arda çalıştırmalarda ~1/8 oranında)
+        // RST'nin işlenmesi birkaç saniyeyi bulabiliyor; bu yüzden pencere
+        // 2'den 10 saniyeye çıkarıldı — bu, testin "asla başarısız olmaz"
+        // bir garanti olmadığını, yalnızca gerçekçi bir üst sınır
+        // koyduğunu dürüstçe not etmek gerekir.
         var sawFailure = false
-        val deadline = System.currentTimeMillis() + 2_000
+        val deadline = System.currentTimeMillis() + 10_000
         while (System.currentTimeMillis() < deadline) {
             if (!c!!.send(CueEvent("x", "y", 0L))) {
                 sawFailure = true
@@ -104,6 +109,6 @@ class TvEventServerClientTest {
             }
             Thread.sleep(50)
         }
-        assertTrue("a send after server stop should eventually fail within 2s", sawFailure)
+        assertTrue("a send after server stop should eventually fail within 10s", sawFailure)
     }
 }

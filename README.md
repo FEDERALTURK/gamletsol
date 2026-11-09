@@ -109,23 +109,61 @@ sürümü:
   bağlanılacak IP:port'u gösterir ve telefondan gelen gerçek `CueEvent`'leri
   (G001-G003 kanıtındaki sabit test yazısı yerine) overlay'de gösterir.
 - **`app-mobile`**: üst menüye "TV'ye Yansıt" öğesi eklendi
-  (`TvConnectDialog`) — kullanıcı TV'nin IP/port'unu elle girer,
-  `CaptionViewModel.connectToTv()` bağlanır; bağlandıktan sonra pipeline'ın
-  ürettiği her cue, mevcut telefon-ekranı sink'ine ek olarak yeni
-  `TvRelaySubtitleSink` üzerinden TV'ye de gönderilir.
+  (`TvConnectDialog`) — kullanıcı TV'nin IP/port'unu ve eşleştirme kodunu
+  elle girer, `CaptionViewModel.connectToTv()` bağlanır; bağlandıktan sonra
+  pipeline'ın ürettiği her cue, mevcut telefon-ekranı sink'ine ek olarak
+  yeni `TvRelaySubtitleSink` üzerinden TV'ye de gönderilir.
 
 **Gerçekten doğrulanan:** `core-transport`'un TCP davranışı — satır bazlı
 okuma, Base64 kodlama, bağlantı kapatma — bu kum havuzunda **gerçek
-127.0.0.1 loopback soketleri üzerinden** 7 birim testiyle doğrulandı
+127.0.0.1 loopback soketleri üzerinden** birim testleriyle doğrulandı
 (`TvEventServerClientTest`, `CueEventCodecTest`; mock değil, gerçek
-`ServerSocket`/`Socket`).
+`ServerSocket`/`Socket`). Bu testler sırasında GERÇEK bir yarış koşulu
+(race condition) bulundu ve düzeltildi: istemcinin `connect()`'i, sunucunun
+`accept()`'i tamamlayıp soketi kayıt altına almasını BEKLEMİYORDU — `stop()`
+tam o aralıkta çağrılırsa bağlantı hiç kapatılmadan açık kalabiliyordu;
+şimdi kabul ve durdurma aynı kilit altında atomik yapılıyor (bkz. kod
+yorumları, `TvEventServer`).
 
-**Doğrulanmadı / bilinçli MVP sınırları (dürüstlük ilkesi):**
-- **Şifreleme/kimlik doğrulama YOK** — düz TCP metin protokolü. G023-G024'teki
-  TLS + eşleştirme token'ı henüz eklenmedi; yalnızca ev içi/güvenilir bir
-  Wi-Fi ağında kullanılmalı.
-- **QR eşleştirme / NSD (otomatik TV keşfi) YOK** — kullanıcı IP/port'u elle
-  girer.
+### `core-pairing` — tek kullanımlık eşleştirme kodu (G023, 2026-11-09)
+
+`core-transport`'un bıraktığı en açık güvenlik boşluğu — IP:port'u bilen
+HERKESİN bağlanabilmesi — yol haritasının G023 adımıyla kısmen kapatıldı:
+
+- **`core-pairing`** (saf Kotlin/JVM): `PairingToken` (60 saniye geçerli,
+  insan tarafından yazılabilir kısa kod — `"7F3K-9QXZ"` gibi, karıştırılabilir
+  `0/O/1/I/L` karakterleri hariç) + `PairingTokenGenerator` + `PairingRegistry`
+  (tek seferde bir aktif kod; tekrar kullanım/süresi geçmiş/bilinmeyen kod
+  reddi; yeni kod üretimi öncekini otomatik geçersiz kılar — "ikinci yayıncı"
+  senaryosu).
+- **`core-transport`**: `TvEventServer`/`TvEventClient`'a bir el sıkışma
+  eklendi — bağlantı kurulduğunda istemci `PAIR:<kod>` gönderir, sunucu
+  `PairingRegistry` ile doğrular ve `PAIR_OK`/`PAIR_REJECTED` ile yanıtlar;
+  istemci bu yanıtı BEKLER (yalnızca yazmanın başarılı olması yeterli
+  sayılmaz — bu ayrımın kendisi bir test yazılırken bulunan gerçek bir
+  tasarım hatasıydı, bkz. kod yorumları).
+- **`app-tv`**: açılışta bir kod üretir, ekranda geri sayımla gösterir,
+  "Yeni eşleştirme kodu oluştur" düğmesi sunar.
+- **`app-mobile`**: `TvConnectDialog`'a bir "Eşleştirme kodu" alanı eklendi.
+
+**Gerçekten doğrulanan:** `core-pairing`'in token üretimi/doğrulaması (9
+testi) ve core-transport ile birlikte gerçek bir loopback soketi üzerindeki
+el sıkışma protokolü (4 ek test: doğru kod, yanlış kod, tekrar kullanım,
+eksik kod) — hepsi roadmap'in G023 için açıkça istediği senaryoları
+(süresi geçmiş QR, ikinci yayıncı, yanlış TV, tekrar deneme) kapsıyor.
+
+**Doğrulanmadı / bilinçli MVP sınırları (dürüstlük ilkesi, hâlâ geçerli):**
+- **Kanal hâlâ ŞİFRELENMEMİŞ** — eşleştirme kodu yalnızca KİMLİK DOĞRULAMA
+  sağlar, şifreleme sağlamaz. G024'teki TLS + fingerprint doğrulaması henüz
+  eklenmedi; yalnızca ev içi/güvenilir bir Wi-Fi ağında kullanılmalı.
+- **Kamera ile QR TARAMA YOK** — G023 başlığı "QR eşleştirme" dese de,
+  telefon tarafında kamera/QR kütüphanesi eklenmedi; kullanıcı TV'de
+  gösterilen kısa kodu elle yazıyor (bu, zaten G025'in gerektirdiği manuel
+  yedek yoldur).
+- **NSD (otomatik TV keşfi) YOK** — kullanıcı IP/port'u da elle girer
+  (G025 henüz eklenmedi).
+- **Reconnect/hatırlama YOK** (G028-G029) — her bağlantı için TV'de yeni
+  bir kod üretilmesi gerekir, "bu TV'yi hatırla" özelliği yok.
 - Gerçek bir telefon ile gerçek bir TV arasında, gerçek bir Wi-Fi ağında
   **hiç denenmedi** (NAT/güvenlik duvarı, Wi-Fi gecikmesi, bağlantı kopması
   gibi gerçek dünya koşulları test edilmedi).
@@ -172,6 +210,8 @@ gamletsol/
 │                      # tune ol, sabit Türkçe test yazısı bindir
 ├─ core-model/         # Saf Kotlin — Cue, FrameRef, TextRegion, Session,
 │                      # TvInputSummary/selectPreferredHdmiPassthroughInput...
+├─ core-pairing/       # Saf Kotlin — PairingToken/PairingTokenGenerator/
+│                      # PairingRegistry (tek kullanımlık eşleştirme kodu, G023)
 ├─ core-pipeline/      # Saf Kotlin — FrameSource/TextRecognizer/Translator/
 │                      # SubtitleSink/SpeechOutput arayüzleri + CaptionPipeline
 ├─ core-transport/     # Saf Kotlin — CueEvent/CueEventCodec + TvEventServer/
@@ -189,13 +229,12 @@ Studio, CI'da GitHub'ın hazır SDK'lı ubuntu-latest imajı) derlenebilirler.
 Henüz eklenmeyen modüller (ilgili karar kapısı onaylandığında veya ihtiyaç
 ortaya çıktığında eklenecek) — isimler güncel yol haritasının (`docs/roadmap/`)
 önerdiği adlarla hizalandı: `data-local` (Room/DataStore — kalıcı ayar/sözlük/
-trusted-devices, P2-P3), `feature-session`/`feature-tv-connect` (QR ile
-eşleştirme arayüzü, G023-G024'ün TLS/token kısmı, P3), `receiver-tizen`,
-`receiver-web`, `source-playstation`, `source-xbox` (X1-X4, koşullu),
-`backend/*` (P6-P7). `app-tv` ve `core-transport` artık eklendi (yukarıya
-bakın) — `core-transport` G022/G025'in şifresiz/eşleştirmesiz MVP'sidir,
-tam G022-G030 için hâlâ `feature-tv-connect` (QR) ve TLS/token katmanı
-gerekiyor.
+trusted-devices, P2-P3), `feature-tv-connect` (NSD/otomatik keşif, G025),
+`receiver-tizen`, `receiver-web`, `source-playstation`, `source-xbox` (X1-X4,
+koşullu), `backend/*` (P6-P7). `app-tv`, `core-transport` ve `core-pairing`
+artık eklendi (yukarıya bakın) — birlikte G022/G023'ün MVP'sidir (yetenek
+bildirimi + tek kullanımlık eşleştirme kodu); G024'teki TLS/fingerprint
+katmanı ve G025'teki otomatik keşif hâlâ eksik.
 
 ## İlk sürümün yaptığı (ve yapmadığı)
 
@@ -223,14 +262,25 @@ ilkesi):**
 
 ## Doğrulama durumu (dürüstlük ilkesi)
 
-- [x] `core-model`, `core-pipeline`, `core-transport`: bu kum havuzunda
-      **gerçekten derlendi ve test edildi** (`./gradlew :core-model:test
-      :core-pipeline:test :core-transport:test` — 20 birim testi (2 Cue + 7
-      CaptionPipeline + 4 TvInputSelection + 3 CueEventCodec + 4
-      TvEventServer/Client, hepsi geçti; `core-transport`'un 4 testi gerçek
-      127.0.0.1 loopback TCP soketleri üzerinden çalışır, mock değil);
-      JDK 21 ile, CI'da JDK 17 ile de **gerçekten tekrar doğrulandı**,
-      aşağıya bakın).
+- [x] `core-model`, `core-pipeline`, `core-pairing`, `core-transport`: bu
+      kum havuzunda **gerçekten derlendi ve test edildi** (`./gradlew
+      :core-model:test :core-pipeline:test :core-pairing:test
+      :core-transport:test` — 33 birim testi (2 Cue + 7 CaptionPipeline + 4
+      TvInputSelection + 3 CueEventCodec + 4 TvEventServer/Client + 9
+      core-pairing + 4 TvEvent+Pairing el sıkışma, hepsi geçti; soket
+      kullanan testler gerçek 127.0.0.1 loopback TCP bağlantıları üzerinden
+      çalışır, mock değil). Bu testler yazılırken/koşulurken İKİ gerçek hata
+      bulundu ve düzeltildi (dürüstlük ilkesi için kayıt): (1) istemcinin
+      `connect()`'i sunucunun handshake'i GERÇEKTEN doğruladığını
+      beklemiyordu, yalnızca yazmanın başarılı olmasına bakıyordu — artık
+      sunucu bir `PAIR_OK`/`PAIR_REJECTED` yanıtı gönderiyor ve istemci bunu
+      bekliyor; (2) `TvEventServer`'da gerçek bir yarış koşulu vardı —
+      istemcinin `connect()`'i, sunucunun `accept()`'i tamamlayıp soketi
+      kayıt altına almasını beklemediği için, `stop()` tam o aralıkta
+      çağrılırsa bağlantı hiç kapatılmadan sonsuza kadar açık
+      kalabiliyordu (izole bir Java soket scriptiyle doğrulandı); artık
+      kabul ve durdurma aynı kilit altında atomik. JDK 21 ile, CI'da JDK 17
+      ile de **gerçekten tekrar doğrulandı**, aşağıya bakın).
 - [x] `feature-capture`, `app-mobile`, `app-tv`: **artık GERÇEK CI'da
       derlendi** (`.github/workflows/android.yml`,
       [run #42567524803](https://github.com/FEDERALTURK/gamletsol/actions/runs/42567524803) —
@@ -259,16 +309,18 @@ ilkesi):**
       çalıştırılmadı**. Bu kapı geçilmeden TV üstü çeviri özelliği
       "çalışıyor" sayılmaz; sonuçlar `docs/compatibility/hardware.md`'ye
       işlenecek.
-- [ ] Telefon↔TV bağlantısı (P3/G022-G030, `core-transport` + "TV'ye
-      Yansıt" menüsü): kod yazıldı ve gerçek loopback soket testleriyle
-      doğrulandı, ama **gerçek bir telefon ile gerçek bir TV arasında,
-      gerçek bir Wi-Fi ağında hiç denenmedi**. Şifreleme/eşleştirme
-      doğrulaması da yok — bkz. yukarıdaki `core-transport` bölümü.
+- [ ] Telefon↔TV bağlantısı (P3/G022-G023, `core-transport` + `core-pairing`
+      + "TV'ye Yansıt" menüsü): kod yazıldı, gerçek loopback soket
+      testleriyle doğrulandı (eşleştirme kodu dahil), ama **gerçek bir
+      telefon ile gerçek bir TV arasında, gerçek bir Wi-Fi ağında hiç
+      denenmedi**. Kanal hâlâ şifrelenmemiş (G024 yok), QR kamera taraması
+      ve otomatik keşif de yok (G025) — bkz. yukarıdaki `core-pairing`
+      bölümü.
 
 ## Geliştirme
 
 ```bash
-./gradlew :core-model:test :core-pipeline:test :core-transport:test  # platformdan bağımsız birim testleri
+./gradlew :core-model:test :core-pipeline:test :core-pairing:test :core-transport:test  # platformdan bağımsız birim testleri
 ./gradlew :app-mobile:assembleDebug              # telefon debug APK (Android SDK gerektirir)
 ./gradlew :app-tv:assembleDebug                  # TV probe debug APK (Android SDK gerektirir)
 ```

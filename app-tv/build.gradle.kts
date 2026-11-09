@@ -60,6 +60,7 @@ android {
 
 dependencies {
     implementation(project(":core-model"))
+    implementation(project(":core-pairing"))
     implementation(project(":core-transport"))
 
     implementation(libs.androidx.core.ktx)
