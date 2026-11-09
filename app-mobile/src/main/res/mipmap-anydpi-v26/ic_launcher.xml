@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  GAMLETSOL uygulama simgesi (2026-11-09) — adaptive icon. Ön plan (kumanda
+  siluetinin içinde çeviri/altyazı balonu) ve arka plan (mor→turkuaz
+  gradyan) katmanları, kullanıcının onayladığı tasarımdan PNG olarak
+  üretildi (res/mipmap-*/ic_launcher_background.png / ic_launcher_foreground.png).
+  minSdk 26 olduğu için eski (legacy, API<26) PNG simge gerekmiyor.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@mipmap/ic_launcher_background"/>
+    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
+</adaptive-icon>

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">GAMLETSOL TV Probe</string>
+    <string name="app_name">GAMLETSOL TV</string>
     <string name="tv_test_overlay_text">GAMLETSOL TEST — Bu Türkçe yazı (ı İ ş Ğ ü ö ç) HDMI görüntüsünün üstünde sabit duruyor mu?</string>
 </resources>

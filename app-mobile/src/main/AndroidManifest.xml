@@ -21,14 +21,21 @@
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
-        android:icon="@android:drawable/sym_def_app_icon"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
         android:label="GAMLETSOL"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
         android:usesCleartextTraffic="false">
 
-        <!-- NOT (dürüstlük ilkesi): `android:icon` şu an sistemin genel
-             yer tutucu simgesi — gerçek bir marka/logo tasarımı henüz
-             yapılmadı (bkz. app-tv'deki aynı yaklaşım). -->
+        <!-- NOT (2026-11-09): Gerçek bir marka/logo tasarlandı ve adaptive
+             icon olarak eklendi (res/mipmap-anydpi-v26/ic_launcher.xml +
+             res/mipmap-*/ic_launcher_background.png/ic_launcher_foreground.png)
+             — önceden burada sistemin genel yer tutucu simgesi
+             (`@android:drawable/sym_def_app_icon`) kullanılıyordu. Simgenin
+             gerçek bir cihazın başlatıcısında (launcher) nasıl
+             render edildiği bu kum havuzunda denenmedi (Android SDK yok) —
+             yalnızca CI'daki gerçek `assembleDebug` derlemesiyle
+             doğrulandı. -->
 
         <!-- Gizlilik ilkesi (bkz. kök README.md / yol haritası "Gizlilik
              ilkesi"): kamera görüntüsü asla sunucuya yüklenmez; yalnız OCR

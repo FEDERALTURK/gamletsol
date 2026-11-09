@@ -348,11 +348,13 @@ CI'nın her zaman yeşil çıkardığı derleme/lint koşusu HATA vermiyordu, am
 Gerçek kod/yapılandırma sorunu olan uyarılar düzeltildi:
 
 - **Eksik uygulama simgesi**: `app-mobile`'da hiç `res/` klasörü yoktu,
-  dolayısıyla `android:icon` ayarlanmamıştı. Her iki uygulama da artık
+  dolayısıyla `android:icon` ayarlanmamıştı. Her iki uygulama da o anda
   `app-tv`'nin zaten kullandığı yaklaşımla sistemin genel yer tutucu
-  simgesini (`@android:drawable/sym_def_app_icon`) kullanıyor — **gerçek
-  bir marka/logo tasarımı HENÜZ yok**, bu yalnızca lint'in "hiç simge yok"
-  uyarısını gidermek için.
+  simgesini (`@android:drawable/sym_def_app_icon`) kullanmaya başladı —
+  gerçek bir marka/logo tasarımı o sırada yoktu, bu yalnızca lint'in
+  "hiç simge yok" uyarısını gidermek içindi. (2026-11-09 — ÇÖZÜLDÜ, bkz.
+  aşağıdaki "GAMLETSOL marka kimliği" bölümü: artık her iki uygulama da
+  gerçek, tasarlanmış bir adaptive icon + TV banner kullanıyor.)
 - **Eksik "data extraction rules"**: `android:allowBackup="false"` zaten
   her türlü yedeklemeyi kapatıyor, ama Android 12+ için
   `android:dataExtractionRules` ve minSdk 26-30 aralığı için de (eski
@@ -576,6 +578,51 @@ kombinasyonlarında bilinen uyumluluk tuhaflıkları vardır — bu yüzden G030
 olarak işaretlendi. Ayrıca anahtarın 10 yıllık geçerlilik süresi dolduğunda
 ne olacağı (`PersistentTvIdentity` şu an bunu ELE ALMIYOR) ayrı, açık bir
 MVP sınırıdır.
+
+### GAMLETSOL marka kimliği — gerçek logo/simge (2026-11-09)
+
+Her iki uygulama da (`app-mobile`, `app-tv`) daha önce Android'in genel
+yer tutucu simgesini (`@android:drawable/sym_def_app_icon` — sistemin
+"uygulamanın gerçek bir simgesi yok" durumunda gösterdiği jenerik Android
+robotu) kullanıyordu; `app-tv`'nin TV ana ekranı banner'ı da düz renkli bir
+dikdörtgendi. Kullanıcının isteği üzerine gerçek bir marka kimliği
+tasarlandı ve uygulandı:
+
+- **Logo konsepti:** Bir oyun kumandası siluetinin (tutamaçlar + D-pad +
+  aksiyon düğmeleri) ortasında, kumandanın "ekranı" gibi duran küçük, ortalı
+  bir konuşma/altyazı balonu — GAMLETSOL'un "oyun ekranındaki yazıyı okuyup
+  çevirir" işlevini tek bakışta anlatması hedeflendi. Mor→turkuaz gradyan
+  zemin, hafif 3D/parlak plastik gövde (gradyan + ince üst parlama + zemin
+  gölgesi).
+- **Uygulama simgesi:** `res/mipmap-anydpi-v26/ic_launcher.xml` (adaptive
+  icon) + `res/mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/ic_launcher_background.png`
+  / `ic_launcher_foreground.png` — her iki uygulamada da aynı tasarım.
+  minSdk 26 olduğu için eski (legacy, API<26) PNG simgeye gerek yok.
+  `AndroidManifest.xml`'deki `android:icon`/`android:roundIcon` artık
+  `@mipmap/ic_launcher`'a işaret ediyor.
+- **TV banner'ı:** `app-tv/src/main/res/drawable-xhdpi/gamletsol_tv_banner.png`
+  (640×360px, 320×180dp'nin 2x'i) — logo + "GAMLETSOL" / "Game Translate
+  Console" yazısı, aynı gradyan zemin üzerinde. Eski düz renkli
+  `tv_probe_banner.xml` placeholder'ı silindi.
+- **Görünür isimler:** `app-mobile` zaten `android:label="GAMLETSOL"`
+  kullanıyordu (değişmedi). `app-tv`'nin adı `strings.xml`'de
+  "GAMLETSOL TV Probe"'tan "GAMLETSOL TV"ye kısaltıldı — iki uygulama aynı
+  marka adını taşıyor, TV'ninki yalnızca hangi cihaza kurulduğunu
+  ayırt etmek için "TV" ekliyor.
+- Logo, raster (PNG) olarak üretildi — gradyan + yumuşak gölge/parlama
+  efektleri Android'in vektör çizim (`VectorDrawable`) formatında
+  desteklenmediği için (filtre/blur yok), SVG'den `rsvg-convert` ile her
+  yoğunluk için doğrudan rasterize edildi (küçültülmüş bir PNG'den
+  büyütme değil).
+
+**Doğrulanmadı (dürüstlük ilkesi):** Simgenin/banner'ın gerçek bir
+telefon/TV başlatıcısında (launcher) tam olarak nasıl göründüğü bu kum
+havuzunda denenmedi (Android SDK/cihaz yok) — yalnızca CI'daki gerçek
+`assembleDebug` derlemesiyle (kaynakların derlendiği, APK'ya paketlendiği)
+doğrulandı. Google Play Store'a özgü ayrı bir "yüksek çözünürlüklü simge"
+(512×512, feature graphic vb.) gerekmiyor çünkü uygulama şu an Play
+Store'da değil (bkz. "Kurulum ve Kullanım Kılavuzu" — APK'lar doğrudan
+sideload ile kuruluyor).
 
 ## Mimari pivotu (2026-11-09, ilk belge)
 
