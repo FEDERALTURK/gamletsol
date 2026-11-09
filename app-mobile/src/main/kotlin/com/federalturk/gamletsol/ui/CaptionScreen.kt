@@ -43,7 +43,9 @@ import androidx.core.content.ContextCompat
 import com.federalturk.gamletsol.CaptionViewModel
 import com.federalturk.gamletsol.PipelineStatus
 import com.federalturk.gamletsol.TvConnectionState
+import com.federalturk.gamletsol.core.pairing.TrustedTv
 import com.federalturk.gamletsol.core.transport.DiscoveredTv
+import com.federalturk.gamletsol.tv.TrustedTvStore
 import com.federalturk.gamletsol.tv.TvNsdDiscoverer
 import androidx.camera.view.PreviewView
 
@@ -102,6 +104,18 @@ fun CaptionScreen(
         onDispose { nsdDiscoverer.stopDiscovery() }
     }
 
+    // G029 ("eşleştirmeyi hatırlama ve iptal"): kalıcı olarak hatırlanan
+    // TV'ler — ekran ilk açıldığında SharedPreferences'tan yüklenir (bkz.
+    // [TrustedTvStore]). `rememberNewTv` açıkken (varsayılan AÇIK), QR
+    // tarama ya da NSD ile bulunan bir TV'ye bağlanıldığında (ikisi de
+    // GERÇEK bir fingerprint taşır) o TV otomatik olarak hatırlanır —
+    // kullanıcı "Bağlan"a basarak zaten bu güveni açıkça seçmiş olur;
+    // istemezse düğmeyi kapatabilir ya da sonradan "Unut"a basabilir.
+    // Manuel giriş yolu fingerprint TAŞIMADIĞI için hiç hatırlanamaz
+    // (bkz. TrustedTv dokümantasyonu).
+    var trustedTvs by remember { mutableStateOf(TrustedTvStore.load(context)) }
+    var rememberNewTv by remember { mutableStateOf(true) }
+
     Box(modifier = Modifier.fillMaxSize()) {
         if (scanningQr) {
             QrScannerScreen(
@@ -112,6 +126,18 @@ fun CaptionScreen(
                     // (manuel giriş yolundan farklı olarak, bkz. aşağıdaki
                     // onConnectToTv sarmalayıcısı).
                     viewModel.connectToTv(payload.host, payload.port, payload.code, payload.fingerprintSha256)
+                    if (rememberNewTv) {
+                        trustedTvs = TrustedTvStore.remember(
+                            context,
+                            TrustedTv(
+                                displayName = "TV (${payload.host})",
+                                host = payload.host,
+                                port = payload.port,
+                                fingerprintSha256 = payload.fingerprintSha256,
+                                rememberedAtMillis = System.currentTimeMillis(),
+                            ),
+                        )
+                    }
                 },
                 onCancel = { scanningQr = false },
             )
@@ -126,18 +152,40 @@ fun CaptionScreen(
                 onShowOnboardingAgain = onShowOnboardingAgain,
                 tvConnectionState = tvConnectionState,
                 cameraPermissionGranted = granted,
-                // G024: manuel giriş yolu — 64 karakterlik fingerprint'i elle
-                // yazmak pratik değil, bu yüzden burada bilerek `null` geçilir
-                // (bağlantı yine TLS ile şifrelidir ama TV'nin kimliği
-                // pinlenmez, bkz. TvEventClient.connect dokümantasyonu).
-                onConnectToTv = { host, port, code -> viewModel.connectToTv(host, port, code, fingerprintSha256 = null) },
+                // G029: artık bir [expectedFingerprint] de alır — manuel
+                // giriş yolunda `null` (kimlik pinlenmez, bkz. aşağıdaki
+                // dürüstlük notu), hatırlanan bir TV'ye yeniden bağlanırken
+                // ise o TV'nin kayıtlı fingerprint'i (gerçek MITM koruması
+                // devam eder, "hatırlama" güvenliği AZALTMAZ).
+                onConnectToTv = { host, port, code, expectedFingerprint ->
+                    viewModel.connectToTv(host, port, code, fingerprintSha256 = expectedFingerprint)
+                },
                 onDisconnectFromTv = viewModel::disconnectFromTv,
                 onStartQrScan = { scanningQr = true },
                 discoveredTvs = discoveredTvs,
                 // G025: NSD ile bulunan bir TV, fingerprint'i de TXT
                 // kaydından taşıdığı için QR ile aynı güvenlik seviyesinde
                 // bağlanır (gerçek MITM korumalı pinning).
-                onConnectDiscovered = { tv -> viewModel.connectToTv(tv.host, tv.port, tv.pairingCode, tv.fingerprintSha256) },
+                onConnectDiscovered = { tv ->
+                    viewModel.connectToTv(tv.host, tv.port, tv.pairingCode, tv.fingerprintSha256)
+                    if (rememberNewTv) {
+                        trustedTvs = TrustedTvStore.remember(
+                            context,
+                            TrustedTv(
+                                displayName = tv.serviceName,
+                                host = tv.host,
+                                port = tv.port,
+                                fingerprintSha256 = tv.fingerprintSha256,
+                                rememberedAtMillis = System.currentTimeMillis(),
+                            ),
+                        )
+                    }
+                },
+                // G029: hatırlanan TV'ler listesi + hatırlama/unutma eylemleri.
+                trustedTvs = trustedTvs,
+                rememberNewTv = rememberNewTv,
+                onRememberNewTvChanged = { rememberNewTv = it },
+                onForgetTrustedTv = { fingerprint -> trustedTvs = TrustedTvStore.forget(context, fingerprint) },
             )
 
             val translated = cue?.translatedText
@@ -155,11 +203,15 @@ private fun BoxScope.TopBar(
     onShowOnboardingAgain: () -> Unit,
     tvConnectionState: TvConnectionState,
     cameraPermissionGranted: Boolean,
-    onConnectToTv: (String, Int, String) -> Unit,
+    onConnectToTv: (String, Int, String, String?) -> Unit,
     onDisconnectFromTv: () -> Unit,
     onStartQrScan: () -> Unit,
     discoveredTvs: List<DiscoveredTv>,
     onConnectDiscovered: (DiscoveredTv) -> Unit,
+    trustedTvs: List<TrustedTv>,
+    rememberNewTv: Boolean,
+    onRememberNewTvChanged: (Boolean) -> Unit,
+    onForgetTrustedTv: (String) -> Unit,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     var dialog by remember { mutableStateOf<MenuDialog?>(null) }
@@ -246,6 +298,10 @@ private fun BoxScope.TopBar(
                 dialog = null
                 onConnectDiscovered(it)
             },
+            trustedTvs = trustedTvs,
+            rememberNewTv = rememberNewTv,
+            onRememberNewTvChanged = onRememberNewTvChanged,
+            onForgetTrustedTv = onForgetTrustedTv,
         )
         MenuDialog.SETUP -> InfoDialog(
             title = "Kurulum talimatları",
@@ -290,21 +346,40 @@ private enum class MenuDialog { TV_CONNECT, SETUP, PRIVACY, ABOUT }
  * desteklenmediği ağlar ve QR'ın okunamadığı durumlar için gereken yedek
  * yol olarak kalıyor. Bağlı olduğunda bağlantıyı kesme seçeneği de burada
  * gösterilir.
+ *
+ * G029 (2026-11-09, "eşleştirmeyi hatırlama ve iptal"): Bir "Hatırlanan
+ * TV'ler" bölümü eklendi — QR/NSD ile (GERÇEK fingerprint taşıyan
+ * yollar) bağlanılan TV'ler, "Yeni TV'leri hatırla" anahtarı açıkken
+ * otomatik hatırlanır. Hatırlanan bir TV'ye "Bağlan" denildiğinde, o
+ * TV'nin kayıtlı host/port alanları doldurulur VE kayıtlı fingerprint'i
+ * [pinnedFingerprint] olarak saklanır — kullanıcı yalnızca TV ekranındaki
+ * GÜNCEL (yeni, tek kullanımlık) eşleştirme kodunu girip "Bağlan"a basar;
+ * bağlantı yine GERÇEK MITM korumalı pinning ile kurulur (manuel giriş
+ * gibi "kimliksiz" DEĞİLDİR). Her kayıt yanında bir "Unut" düğmesi vardır.
  */
 @Composable
 private fun TvConnectDialog(
     connectionState: TvConnectionState,
     cameraPermissionGranted: Boolean,
-    onConnect: (String, Int, String) -> Unit,
+    onConnect: (String, Int, String, String?) -> Unit,
     onDisconnect: () -> Unit,
     onDismiss: () -> Unit,
     onStartQrScan: () -> Unit,
     discoveredTvs: List<DiscoveredTv>,
     onConnectDiscovered: (DiscoveredTv) -> Unit,
+    trustedTvs: List<TrustedTv>,
+    rememberNewTv: Boolean,
+    onRememberNewTvChanged: (Boolean) -> Unit,
+    onForgetTrustedTv: (String) -> Unit,
 ) {
     var host by remember { mutableStateOf("") }
     var portText by remember { mutableStateOf("48631") }
     var pairingCode by remember { mutableStateOf("") }
+    // G029: bir "hatırlanan TV"ye "Bağlan" denildiğinde bu, o kaydın
+    // fingerprint'ine ayarlanır — manuel alanlar elle değiştirilirse
+    // (kullanıcı farklı bir TV'ye bağlanmaya karar verirse) sıfırlanır,
+    // çünkü artık doldurulan host/port o kayda ait OLMAYABİLİR.
+    var pinnedFingerprint by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -326,6 +401,32 @@ private fun TvConnectDialog(
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 if (connectionState != TvConnectionState.CONNECTED) {
+                    if (trustedTvs.isNotEmpty()) {
+                        Text("Hatırlanan TV'ler:", style = MaterialTheme.typography.bodySmall)
+                        trustedTvs.forEach { tv ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Button(
+                                    onClick = {
+                                        host = tv.host
+                                        portText = tv.port.toString()
+                                        pinnedFingerprint = tv.fingerprintSha256
+                                    },
+                                    enabled = connectionState != TvConnectionState.CONNECTING,
+                                ) {
+                                    Text("${tv.displayName} (${tv.host}:${tv.port})")
+                                }
+                                TextButton(onClick = { onForgetTrustedTv(tv.fingerprintSha256) }) {
+                                    Text("Unut")
+                                }
+                            }
+                        }
+                        Text(
+                            "Hatırlanan bir TV'ye bağlanmak için yukarıdan seçin, TV " +
+                                "ekranındaki GÜNCEL eşleştirme kodunu girip \"Bağlan\"a basın.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
                     if (discoveredTvs.isNotEmpty()) {
                         Text("Yakındaki TV'ler:", style = MaterialTheme.typography.bodySmall)
                         discoveredTvs.forEach { tv ->
@@ -348,22 +449,45 @@ private fun TvConnectDialog(
                         )
                     }
                     Spacer(modifier = Modifier.height(12.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Yeni TV'leri hatırla:", style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = { onRememberNewTvChanged(!rememberNewTv) }) {
+                            Text(if (rememberNewTv) "Açık" else "Kapalı")
+                        }
+                    }
                     Text("— veya elle girin —", style = MaterialTheme.typography.bodySmall)
                     Spacer(modifier = Modifier.height(8.dp))
                 }
                 OutlinedTextField(
                     value = host,
-                    onValueChange = { host = it },
+                    onValueChange = {
+                        host = it
+                        // Kullanıcı hatırlanan bir kaydı doldurduktan sonra
+                        // alanı elle değiştirirse, artık BAŞKA bir TV'ye
+                        // bağlanmayı deniyor olabilir — pinlenmiş fingerprint
+                        // o eski kayda ait kalmamalı.
+                        pinnedFingerprint = null
+                    },
                     label = { Text("TV IP adresi (ör. 192.168.1.23)") },
                     enabled = connectionState != TvConnectionState.CONNECTING,
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = portText,
-                    onValueChange = { portText = it },
+                    onValueChange = {
+                        portText = it
+                        pinnedFingerprint = null
+                    },
                     label = { Text("Port") },
                     enabled = connectionState != TvConnectionState.CONNECTING,
                 )
+                if (pinnedFingerprint != null) {
+                    Text(
+                        "Bu TV hatırlanıyor — bağlantı kimliği doğrulanmış (pinlenmiş) olarak kurulacak.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF4DD0E1),
+                    )
+                }
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = pairingCode,
@@ -389,7 +513,7 @@ private fun TvConnectDialog(
                     onClick = {
                         val port = portText.toIntOrNull()
                         if (host.isNotBlank() && port != null && pairingCode.isNotBlank()) {
-                            onConnect(host.trim(), port, pairingCode.trim())
+                            onConnect(host.trim(), port, pairingCode.trim(), pinnedFingerprint)
                         }
                     },
                     enabled = connectionState != TvConnectionState.CONNECTING,

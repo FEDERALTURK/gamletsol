@@ -26,9 +26,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
+import com.federalturk.gamletsol.core.model.tv.CaptionDisplaySettings
+import com.federalturk.gamletsol.core.model.tv.CaptionVerticalPosition
 import com.federalturk.gamletsol.core.model.tv.TvInputSummary
 import com.federalturk.gamletsol.core.model.tv.selectPreferredHdmiPassthroughInput
 import com.federalturk.gamletsol.core.pairing.PairingQrPayload
@@ -77,6 +81,12 @@ import java.util.Locale
  *    ([TvNsdAttributes]). QR ve manuel giriş hâlâ çalışır; NSD yalnızca
  *    bir kısayol, engellenmişse (bazı router'larda mDNS kapalı) sessizce
  *    atlanır.
+ * 9. (G027, 2026-11-09) Kullanıcı, "Yazı ayarları" düğmesiyle açılan bir
+ *    panelden altyazının font boyutunu, ekrandaki konumunu (üst/alt), arka
+ *    plan opaklığını ve kenar (safe-area) boşluğunu kumandayla (D-pad +
+ *    "seç") adım adım ayarlayabilir ([CaptionDisplaySettings], saf Kotlin —
+ *    core-model); seçimler [CaptionDisplayPrefs] ile `SharedPreferences`'a
+ *    kalıcı olarak kaydedilir.
  *
  * NOT (dürüstlük ilkesi): #1-3 gerçek Profilo TV + Xbox donanımında HENÜZ
  * denenmedi (bkz. docs/compatibility/hardware.md). #4-#5'teki TCP sunucusu
@@ -89,6 +99,9 @@ import java.util.Locale
  * (core-pairing). #8'deki gerçek NSD/mDNS reklamı/keşfi de gerçek bir ağda
  * HİÇ denenmedi — yalnızca TXT kayıt kodlama/kod çözme mantığı birim test
  * edildi (core-transport), NsdManager'ın kendisi burada hiç çalıştırılmadı.
+ * #9'daki ayar paneli de gerçek bir TV kumandasıyla (D-pad fokus/gezinme)
+ * HİÇ denenmedi — yalnızca [CaptionDisplaySettings]'in kelepçeleme (clamp)
+ * mantığı core-model'de birim test edildi.
  */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -134,6 +147,17 @@ private fun TvProbeScreen() {
     // LaunchedEffect(currentToken, serverPort)) yeniden kaydedilir.
     val nsdAdvertiser = remember { TvNsdAdvertiser(context) }
     var nsdServiceName by remember { mutableStateOf<String?>(null) }
+
+    // G027: altyazı görüntü ayarları — ilk açılışta SharedPreferences'tan
+    // yüklenir, her değişiklikte hemen kalıcı olarak kaydedilir (bkz.
+    // [CaptionDisplayPrefs]).
+    var displaySettings by remember { mutableStateOf(CaptionDisplayPrefs.load(context)) }
+    var showDisplaySettingsPanel by remember { mutableStateOf(false) }
+    fun updateDisplaySettings(transform: (CaptionDisplaySettings) -> CaptionDisplaySettings) {
+        val updated = transform(displaySettings)
+        displaySettings = updated
+        CaptionDisplayPrefs.save(context, updated)
+    }
 
     DisposableEffect(Unit) {
         currentToken = pairingRegistry.issue()
@@ -206,20 +230,31 @@ private fun TvProbeScreen() {
 
         // Overlay — gerçek amaç bu kutunun TvView'ın gösterdiği görüntünün
         // ÜSTÜNDE görünüp görünmediğini gözle doğrulamak (G003).
+        // G027: konum (üst/alt), arka plan opaklığı ve kenar (safe-area)
+        // boşluğu artık kullanıcının [displaySettings] seçimine göre.
+        val overlayAlignment = when (displaySettings.position) {
+            CaptionVerticalPosition.BOTTOM -> Alignment.BottomCenter
+            CaptionVerticalPosition.TOP -> Alignment.TopCenter
+        }
         Column(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
+                .align(overlayAlignment)
                 .fillMaxWidth()
-                .background(Color(0x99000000))
-                .padding(24.dp),
+                .background(Color.Black.copy(alpha = displaySettings.backgroundOpacity))
+                .padding(displaySettings.safeAreaMarginDp.dp),
         ) {
             val liveCue = receivedCue
+            val captionFontSize = (20f * displaySettings.fontScale).sp
             if (liveCue != null) {
                 // Telefondan gerçek bir cue geldiyse, sabit test yazısı
                 // yerine onu göster — gerçek P3 davranışı.
-                Text(text = liveCue.translatedText, color = Color.White)
+                Text(text = liveCue.translatedText, color = Color.White, fontSize = captionFontSize)
                 if (liveCue.originalText.isNotBlank()) {
-                    Text(text = liveCue.originalText, color = Color.White.copy(alpha = 0.7f))
+                    Text(
+                        text = liveCue.originalText,
+                        color = Color.White.copy(alpha = 0.7f),
+                        fontSize = captionFontSize,
+                    )
                 }
             } else {
                 Text(
@@ -277,6 +312,45 @@ private fun TvProbeScreen() {
             Button(onClick = { currentToken = pairingRegistry.issue() }) {
                 Text("Yeni eşleştirme kodu oluştur")
             }
+
+            // G027: yazı yerleşimi/okunabilirlik ayar paneli — kumandayla
+            // (D-pad yukarı/aşağı ile düğmeler arasında gezinip "seç" ile
+            // tıklanır; Compose'un varsayılan fokus gezinmesi, bkz. sınıf
+            // dokümantasyonundaki dürüstlük notu — gerçek kumandada HENÜZ
+            // denenmedi).
+            Button(onClick = { showDisplaySettingsPanel = !showDisplaySettingsPanel }) {
+                Text(if (showDisplaySettingsPanel) "Yazı ayarlarını gizle" else "Yazı ayarları")
+            }
+            if (showDisplaySettingsPanel) {
+                Text(
+                    text = "Font: %.1fx · Konum: %s · Arka plan: %%%d · Kenar: %ddp".format(
+                        displaySettings.fontScale,
+                        if (displaySettings.position == CaptionVerticalPosition.BOTTOM) "Alt" else "Üst",
+                        (displaySettings.backgroundOpacity * 100).toInt(),
+                        displaySettings.safeAreaMarginDp,
+                    ),
+                    color = Color(0xFFFFD54F),
+                )
+                Row {
+                    Button(onClick = { updateDisplaySettings { it.withFontScaleDelta(-1) } }) { Text("Font -") }
+                    Button(onClick = { updateDisplaySettings { it.withFontScaleDelta(1) } }) { Text("Font +") }
+                }
+                Row {
+                    Button(onClick = { updateDisplaySettings { it.withTogglePosition() } }) { Text("Konum değiştir") }
+                }
+                Row {
+                    Button(onClick = { updateDisplaySettings { it.withBackgroundOpacityDelta(-1) } }) { Text("Arka plan -") }
+                    Button(onClick = { updateDisplaySettings { it.withBackgroundOpacityDelta(1) } }) { Text("Arka plan +") }
+                }
+                Row {
+                    Button(onClick = { updateDisplaySettings { it.withSafeAreaMarginDelta(-1) } }) { Text("Kenar -") }
+                    Button(onClick = { updateDisplaySettings { it.withSafeAreaMarginDelta(1) } }) { Text("Kenar +") }
+                }
+                Button(onClick = { updateDisplaySettings { it.reset() } }) {
+                    Text("Varsayılanlara dön")
+                }
+            }
+
             Text(
                 text = "Durum: ${tuneStatus.name} · Giriş: ${selectedInput?.inputId ?: "bulunamadı"}",
                 color = Color.White,

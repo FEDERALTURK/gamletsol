@@ -9,6 +9,7 @@ import java.net.Socket
 import java.security.SecureRandom
 import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
+import java.util.concurrent.atomic.AtomicLong
 import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.X509TrustManager
@@ -50,6 +51,16 @@ import javax.net.ssl.X509TrustManager
  *   sertifikasını sunarak araya girebilir). Bu, dürüstlük ilkesi gereği
  *   açıkça belgelenen bir MVP sınırıdır — tam güvenlik için QR ile
  *   eşleştirme önerilir.
+ *
+ * G026 (olay doğrulama ve sıra güvenliği, 2026-11-09): Her [TvEventClient]
+ * örneği, kendi bağlantısını tanımlayan rastgele bir [epochId] üretir
+ * (bağlantı kurulurken, bir kez) ve [send] her çağrıldığında 0'dan
+ * başlayıp monoton artan bir `sequence` sayacı ekler (bkz. [CueEventCodec]/
+ * [CueSequenceGuard]). Bu, TV tarafının (sunucu) bu bağlantıdan gelen
+ * olayları sıraya göre doğrulamasını ve yeniden bağlanıldığında (G028)
+ * eski oturumun olaylarının yenisiyle KARIŞMAMASINI sağlar — her yeni
+ * [connect] çağrısı yeni bir [TvEventClient] (ve dolayısıyla yeni bir
+ * [epochId]) üretir.
  */
 class TvEventClient private constructor(private val socket: Socket) {
     private val writer = BufferedWriter(OutputStreamWriter(socket.outputStream, Charsets.UTF_8))
@@ -60,6 +71,11 @@ class TvEventClient private constructor(private val socket: Socket) {
     // reader'ın normal [send] akışında bir karşılığı yoktur.
     private val reader = BufferedReader(InputStreamReader(socket.inputStream, Charsets.UTF_8))
 
+    // G026: bu bağlantıya özgü oturum kimliği + monoton sıra sayacı —
+    // bkz. sınıf dokümantasyonu.
+    private val epochId: String = generateEpochId()
+    private val sequenceCounter = AtomicLong(0L)
+
     val isConnected: Boolean get() = socket.isConnected && !socket.isClosed
 
     /** [connect] sırasında TV'den alınan, bağlantı boyunca değişmeyen yetenek bildirimi. */
@@ -69,7 +85,7 @@ class TvEventClient private constructor(private val socket: Socket) {
     /** Gönderimi başarılıysa `true`, bağlantı/akış hatasında `false` döner. */
     fun send(event: CueEvent): Boolean {
         return try {
-            writer.write(CueEventCodec.encode(event))
+            writer.write(CueEventCodec.encode(event, sequenceCounter.getAndIncrement(), epochId))
             writer.newLine()
             writer.flush()
             true
@@ -189,5 +205,12 @@ class TvEventClient private constructor(private val socket: Socket) {
 
                 override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
             }
+
+        /** Her bağlantı için rastgele, 16 hex karakterlik (64 bit) bir oturum kimliği üretir — bkz. sınıf dokümantasyonu G026. */
+        private fun generateEpochId(): String {
+            val bytes = ByteArray(8)
+            SecureRandom().nextBytes(bytes)
+            return bytes.joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+        }
     }
 }

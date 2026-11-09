@@ -20,11 +20,35 @@ private fun Socket.closeForcibly() {
  * TV tarafında çalışan basit TCP sunucusu — telefondan gelen [CueEvent]
  * satırlarını dinler ve her biri için [onCueReceived] çağırır.
  *
- * NOT (yol haritası, P3): Tek seferde tek istemci (telefon) bağlantısı
- * düşünülmüştür — eşzamanlı çoklu bağlantı/yeniden bağlanma mantığı YOK,
- * bu MVP sürümünün bilinen bir sınırıdır. Her yeni bağlantı, önceki
- * bağlantıyı kapatmadan kabul edilir; çağıran kod (app-tv) şimdilik tek
- * bir telefonun bağlanacağını varsayar.
+ * NOT (yol haritası, G028 — reconnect/snapshot, 2026-11-09): Sunucu artık
+ * TEK bir "birincil" (primary) istemci bağlantısı kavramını uygular (bkz.
+ * [primaryClientLock]) — eşleştirme + yetenek el sıkışmasını BAŞARIYLA
+ * tamamlayan her yeni bağlantı, önceki birincil bağlantıyı (varsa) ZORLA
+ * kapatır ve onun yerini alır. Bu, "telefon ağ koptuktan sonra yeniden
+ * bağlanır" senaryosunda eski (yarı ölü/zombi) bağlantının sonsuza kadar
+ * açık kalmamasını ve iki bağlantının aynı anda cue göndermeye çalışmamasını
+ * sağlar. Eski MVP davranışı (sınırsız eşzamanlı bağlantı kabul etme) artık
+ * YOK — bu BİLİNÇLİ bir breaking change'dir (bu depodaki "geriye dönük
+ * uyumluluk şiması yok" ilkesiyle uyumlu).
+ *
+ * NOT (dürüstlük ilkesi, G028 sınırı): Bu sunucu HENÜZ bir "son cue
+ * anlık görüntüsünü (snapshot) yeni bağlanan istemciye geri gönder" veya
+ * zaman-aşımına dayalı otomatik "temizle" (clear) mesajı İÇERMEZ —
+ * protokol hâlâ TEK yönlüdür (telefon → TV, bkz. [TvCapabilities.supportsClear]
+ * `false`) ve TV zaten son aldığı cue'yu ekranda tutar (yenisi gelene kadar),
+ * bu yüzden "TV'de güncel durumu göster" gereksinimi dolaylı olarak zaten
+ * karşılanıyor — telefon tarafı yeniden bağlandığında (yeni bir
+ * [TvEventClient], yeni bir epoch ile) CANLI cue göndermeye devam eder,
+ * eski bir ARABELLEK'ten (backlog) tekrar oynatma YAPILMAZ çünkü böyle bir
+ * arabellek zaten YOK — her cue anında iletilir, biriktirilmez. Otomatik
+ * yeniden bağlanma (bağlantı koptuğunda [TvEventClient]'ın kendiliğinden
+ * yeniden denemesi) de henüz YOK, kullanıcı/`app-mobile` manuel olarak
+ * yeniden bağlanmalıdır (bkz. `TvConnectDialog`) — bilinen MVP sınırı.
+ * Saat farkı (clock skew) notu: [CueEvent.timestampMs] gönderenin (telefon)
+ * saatidir; ileride bir TTL/temizle mekanizması eklenirse bu değer TV'nin
+ * kendi `System.currentTimeMillis()`'iyle DOĞRUDAN karşılaştırılmamalı —
+ * TV, bir cue'yu NE ZAMAN ALDIĞINI kendi monoton saatiyle ayrıca kaydetmeli
+ * (bkz. [onCueReceived]'in çağrıldığı an, `app-tv` tarafında).
  *
  * `port = 0` verilirse işletim sistemi boş bir port seçer — bu, [boundPort]
  * üzerinden okunabilir ve gerçek loopback soket testlerinde kullanılır
@@ -47,6 +71,12 @@ private fun Socket.closeForcibly() {
  * Sunucu, istemcinin sertifikasını/kimliğini DOĞRULAMAZ (yalnızca kendi
  * kimliğini sunar) — istemci tarafındaki fingerprint pinning ([TvEventClient]
  * dokümantasyonuna bakın) GÜVENLİĞİN asıl kaynağıdır.
+ *
+ * NOT (yol haritası G026 — olay doğrulama ve sıra güvenliği, 2026-11-09):
+ * Her bağlantı kendi [CueSequenceGuard] örneğini kullanır — bir satırdan
+ * çözülen [DecodedCueEvent], bu koruyucu tarafından kabul edilmezse (tekrar/
+ * replay, sırası bozulmuş/reorder) [onCueReceived] HİÇ ÇAĞRILMAZ, sessizce
+ * atlanır (bkz. [CueEventCodec]/[CueSequenceGuard] dokümantasyonu).
  */
 class TvEventServer(
     port: Int = DEFAULT_PORT,
@@ -65,41 +95,18 @@ class TvEventServer(
     private val running = AtomicBoolean(false)
     private val executor = Executors.newCachedThreadPool()
 
-    // DÜZELTME #1 (gerçek CI çalıştırmasında bulunan hata): `executor.shutdownNow()`
-    // yalnızca iş parçacıklarını KESER (interrupt) — blocking bir
-    // `InputStream.read()`/`readLine()` çağrısı Java'da kesintiye duyarlı
-    // DEĞİLDİR, bu yüzden `stop()` çağrıldığında istemciye bağlı soket
-    // kapanmadan açık kalabiliyordu ve istemci tarafı (`TvEventClient`)
-    // bağlantının koptuğunu asla fark etmiyordu (bkz.
-    // TvEventServerClientTest "send after server stop" — gerçek CI
-    // çalıştırmasında AssertionError ile başarısız oldu, bu kum
-    // havuzundaki yerel çalıştırmada rastlantıyla geçmişti). Her kabul
-    // edilen istemci soketi burada tutulur ve [stop] bunların HEPSİNİ
-    // açıkça kapatır.
-    //
-    // DÜZELTME #2 (yine gerçek yerel test çalıştırmalarında ~1/8-1/15
-    // oranında bulunan GERÇEK bir yarış koşulu — SO_LINGER eklenmesinden
-    // SONRA bile bazı çalıştırmalarda sorun sürdü, bu bir zamanlama sorunu
-    // değil, mantık hatasıydı): istemcinin `connect()` çağrısı, sunucunun
-    // `accept()`'i TAMAMLAMASINI ve soketi `clientSockets`'a EKLEMESİNİ
-    // BEKLEMEZ — TCP el sıkışması çekirdek seviyesinde tamamlandığı anda
-    // istemci tarafı döner, ama bu arada sunucunun kabul döngüsü henüz
-    // `accept()`'ten dönmemiş/listeye eklememiş olabilir. `stop()` TAM BU
-    // aralıkta çalışırsa, o soket ne `clientSockets` listesinde bulunur
-    // (henüz eklenmedi) ne de `serverSocket.close()`'dan etkilenir (zaten
-    // kullanıcı alanında `accept()`'ten dönmüş olabilir) — sonuç: o soket
-    // HİÇBİR ZAMAN kapatılmaz, istemci sonsuza kadar "bağlı" kalır. Bunu
-    // kanıtlamak için saf Java soketleriyle (Gradle/Kotlin olmadan) izole
-    // bir tekrar-üretim scripti yazıldı ve senkronizasyon olmadan bu
-    // yarışın gerçekten oluştuğu doğrulandı. Düzeltme: [acceptLock],
+    // bkz. sınıf dokümantasyonundaki G024-öncesi düzeltme notları (iki
+    // gerçek CI/yarış hatası, G023-G024 döneminde bulundu) — [acceptLock],
     // "soketi listeye ekle" ile "stop() çalıştı mı kontrol et" adımlarını
-    // atomik hale getiriyor — ya accept() soketi listeye [stop] kilidi
-    // almadan ÖNCE ekler (o zaman [stop] onu bulup kapatır), ya da [stop]
-    // kilidi önce alır ve `running`'i false yapar (o zaman accept() kilidi
-    // aldığında bunu görür ve soketi KENDİSİ hemen kapatır) — iki durumda
-    // da soket asla gözden kaçmaz.
+    // atomik hale getirir.
     private val acceptLock = Any()
     private val clientSockets = CopyOnWriteArrayList<Socket>()
+
+    // G028: "tek birincil bağlantı" muhasebesi — bkz. sınıf dokümantasyonu.
+    // Aynı kilit, "yeni bir bağlantıyı birincil yap" ile "stop() tüm
+    // soketleri kapatıyor" adımlarının birbirini ezmemesi için de kullanılır.
+    private val primaryClientLock = Any()
+    private var primaryClientSocket: Socket? = null
 
     val boundPort: Int get() = serverSocket.localPort
 
@@ -178,18 +185,44 @@ class TvEventServer(
                 return
             }
 
+            // G028: eşleştirme + yetenek el sıkışması BAŞARIYLA tamamlandı —
+            // bu bağlantı artık "birincil" sayılır. Önceki birincil bağlantı
+            // (varsa, ör. ağı kaybetmiş ve şimdi yeniden bağlanan AYNI
+            // telefonun eski yarı-ölü soketi) ZORLA kapatılır; bu BU
+            // soketi etkilemez (farklı bir nesne referansı).
+            val staleSocket = synchronized(primaryClientLock) {
+                val previous = primaryClientSocket
+                primaryClientSocket = socket
+                previous
+            }
+            if (staleSocket != null && staleSocket !== socket) {
+                staleSocket.closeForcibly()
+            }
+
+            // G026: bu bağlantıya özgü sıra/epoch koruyucusu — bkz. sınıf
+            // dokümantasyonu ve [CueSequenceGuard].
+            val sequenceGuard = CueSequenceGuard()
+
             while (running.get()) {
                 val line = try {
                     reader.readLine()
                 } catch (e: Exception) {
                     null
                 } ?: break
-                val event = CueEventCodec.decode(line) ?: continue
-                onCueReceived(event)
+                val decoded = CueEventCodec.decode(line) ?: continue
+                if (!sequenceGuard.accept(decoded)) continue
+                onCueReceived(decoded.event)
             }
         } finally {
             runCatching { socket.close() }
             clientSockets.remove(socket)
+            // Bu bağlantı birincildi ve HÂLÂ birincil olarak kayıtlıysa
+            // (yani kendisinden sonra yeni bir birincil atanmadıysa) kaydı
+            // temizle — aksi halde zaten daha önce atanmış YENİ birincili
+            // yanlışlıkla null'a düşürürdük.
+            synchronized(primaryClientLock) {
+                if (primaryClientSocket === socket) primaryClientSocket = null
+            }
         }
     }
 
@@ -209,6 +242,7 @@ class TvEventServer(
             clientSockets.forEach { it.closeForcibly() }
             clientSockets.clear()
         }
+        synchronized(primaryClientLock) { primaryClientSocket = null }
         runCatching { serverSocket.close() }
         executor.shutdownNow()
     }

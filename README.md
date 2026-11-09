@@ -436,6 +436,99 @@ havuzunda unit test edilemedi (ama gerçek CI'da derlendi/lint geçti).
   (örn. Samsung/LG TV'lere özel keşif mekanizmaları burada YOK) — bu
   yalnızca genel Android TV/Google TV hedefi için.
 
+### G026-G029 — olay doğrulama, yazı okunabilirliği, reconnect ve "bu TV'yi hatırla" (2026-11-09)
+
+Roadmap'in P3-2/P3-3 kontrol noktalarındaki dört adım (G030 — gerçek Profilo
+TV kabul matrisi — hariç, o yalnızca gerçek donanımda kullanıcının kendisi
+tarafından yapılabilecek bir QA kontrol listesi):
+
+**G026 — Olay doğrulama ve sıra güvenliği:**
+- `CueEventCodec.decode` artık ham satır uzunluğunu (`MAX_LINE_LENGTH`),
+  çözülmüş metin alanlarının uzunluğunu (`MAX_TEXT_LENGTH`) ve şemayı (tam
+  5 alan — eski 3-alanlı G025-öncesi biçim artık BİLİNÇLİ olarak
+  reddedilir, breaking change) doğrular.
+- Her `CueEvent` artık bir `sequence` (monoton artan) + `epochId`
+  (bağlantı/oturum kimliği, `TvEventClient.connect()` her çağrıldığında
+  yeniden üretilir) taşır — yeni `CueSequenceGuard` sınıfı, aynı epoch
+  içinde tekrar oynatılan (replay) veya sırası bozulmuş (reorder)
+  olayları sessizce reddeder; her `TvEventServer` bağlantısı kendi
+  bağımsız `CueSequenceGuard` örneğini kullanır.
+- "Metin HTML çalıştırmaz" kabul kriteri zaten baştan beri doğruydu —
+  `app-tv` bu metni her zaman düz Compose `Text` olarak çizdi, hiçbir
+  zaman bir WebView/HTML motoruna vermedi (bkz. `CueEvent.kt` dokümantasyonu).
+
+**G027 — TV yazı yerleşimi ve okunabilirlik:**
+- Yeni `core-model` sınıfı `CaptionDisplaySettings` (saf Kotlin): font
+  ölçeği, dikey konum (üst/alt), arka plan opaklığı, kenar (safe-area)
+  boşluğu — her biri kumandayla (D-pad) adım adım değiştirilebilir, her
+  zaman güvenli bir aralığa kelepçelenir (clamp).
+- `app-tv`'de "Yazı ayarları" düğmesiyle açılan bir panel (+/- düğmeleri,
+  konum değiştir, varsayılanlara dön); seçimler `CaptionDisplayPrefs`
+  (`SharedPreferences`) ile kalıcı olarak saklanır, TV yeniden
+  başlatıldığında KAYBOLMAZ.
+
+**G028 — Reconnect, snapshot ve süre sonu:**
+- `TvEventServer` artık TEK bir "birincil" bağlantı kavramı uygular —
+  eşleştirme+yetenek el sıkışmasını tamamlayan her yeni bağlantı, önceki
+  birincil bağlantıyı (varsa, ör. ağı kaybedip yeniden bağlanan AYNI
+  telefonun eski yarı-ölü soketi) ZORLA kapatır. Eski MVP davranışı
+  (sınırsız eşzamanlı bağlantı) kaldırıldı.
+- "Eski oturumun olayları yeni oturuma sızmaz" gereksinimi G026'nın
+  epoch mekanizmasıyla karşılanır — her yeni bağlantı yeni bir epoch açar.
+
+**G029 — Eşleştirmeyi hatırlama ve iptal:**
+- Yeni `core-pairing` sınıfları `TrustedTv`/`TrustedTvCodec`/
+  `TrustedTvRegistry` (saf Kotlin) — hatırlama/unutma/tekilleştirme
+  (fingerprint'e göre) mantığı.
+- `app-mobile`'da `TrustedTvStore` (`SharedPreferences`) ile kalıcı
+  depolama. QR tarama ya da NSD ile bulunan bir TV'ye bağlanıldığında
+  ("Yeni TV'leri hatırla" anahtarı açıkken, varsayılan açık) o TV
+  otomatik hatırlanır. "TV'ye Yansıt" diyaloğunda "Hatırlanan TV'ler"
+  listesi + her kayıt için "Unut" düğmesi var. Hatırlanan bir TV'ye
+  yeniden bağlanırken host/port otomatik doldurulur VE kayıtlı
+  fingerprint pinlenerek kullanılır — kullanıcı yalnızca TV ekranındaki
+  GÜNCEL (tek kullanımlık) eşleştirme kodunu girer.
+
+**Gerçekten doğrulanan (unit test, bu kum havuzunda çalıştırıldı):**
+`CueEventCodec`in boyut/şema/sequence/epoch doğrulaması ve eski 3-alanlı
+biçimi reddetmesi, `CueSequenceGuard`'ın replay/reorder reddi ve epoch
+geçişinde sıfırlama, `TvEventServer`'ın yeni bağlantı geldiğinde eskisini
+GERÇEKTEN kapattığı (gerçek loopback TLS soketi üzerinde), tüm bu
+değişikliklerden sonra önceki `TvEventServerClientTest`/
+`TvEventPairingHandshakeTest`/`SocketTvReceiverAdapterTest` testlerinin
+HÂLÂ geçtiği, `CaptionDisplaySettings`'in her alanının kelepçelenmesi
+(ondalık birikim hatası olmadan), `TrustedTvCodec`/`TrustedTvRegistry`'nin
+hatırlama/unutma/tekilleştirme/case-insensitive fingerprint eşleşmesi.
+core-transport 31→38 test, core-pairing 22→34 test, core-model'e 8 yeni
+test eklendi — repo toplamı 66→98 test.
+
+**Doğrulanmadı / bilinçli MVP sınırları (dürüstlük ilkesi):**
+- G027'nin ayar paneli gerçek bir TV kumandasıyla (D-pad fokus/gezinme)
+  HİÇ denenmedi — yalnızca `CaptionDisplaySettings`'in kelepçeleme
+  mantığı birim test edildi.
+- G028'in "tek birincil bağlantı" davranışı GERÇEK bir ağ kesintisi
+  senaryosunda (Wi-Fi kopması, 10 saniyelik kayıp, uyku/uyanma) HİÇ
+  denenmedi — yalnızca "ikinci bir bağlantı geldiğinde sunucunun
+  davranışı" loopback soketle doğrulandı. Otomatik yeniden bağlanma
+  (bağlantı koptuğunda istemcinin kendiliğinden yeniden denemesi) HÂLÂ
+  YOK — kullanıcı manuel olarak yeniden bağlanmalı.
+- TTL/zaman-aşımına dayalı otomatik "temizle" (clear) mesajı protokole
+  HENÜZ eklenmedi (`TvCapabilities.supportsClear` hâlâ `false`) — TV,
+  son aldığı cue'yu yenisi gelene kadar ekranda tutar.
+- **G029'un güvenlik değeri şu an KISITLI** çünkü
+  `TvTlsIdentity` HENÜZ KALICI DEĞİL (`app-tv` her yeniden başlatıldığında
+  yeni bir sertifika/fingerprint üretir, bkz. o sınıfın dokümantasyonu) —
+  bu yüzden hatırlanan bir TV'nin fingerprint'i, TV YENİDEN
+  BAŞLATILDIKTAN SONRA artık geçerli OLMAZ; kullanıcı o zaman yeniden
+  QR taramalı/TV'yi yeniden hatırlamalıdır. Hatırlama/unutma mekanizmasının
+  kendisi doğru çalışır ve test edilmiştir — eksik olan TV kimliğinin
+  kalıcılığıdır (Android Keystore'da kalıcı bir anahtar çifti saklamayı
+  gerektiren, ayrı ve henüz açılmamış bir iş).
+- G030 (Profilo TV ilk kabul matrisi) bu kum havuzunda YAPILAMAZ — gerçek
+  Xbox+Profilo donanımında 10 güvenli eşleşme + 60 dakika canlı kamera→TV
+  + kopmada temizleme kaydı gerektirir, kullanıcının kendisi tarafından
+  yapılmalıdır.
+
 ## Mimari pivotu (2026-11-09, ilk belge)
 
 Bu depo başlangıçta mikrofonla TV/konsol sesini dinleyip buluta gönderen bir
@@ -533,15 +626,19 @@ ilkesi):**
 - [x] `core-model`, `core-pipeline`, `core-pairing`, `core-transport`: bu
       kum havuzunda **gerçekten derlendi ve test edildi** (`./gradlew
       :core-model:test :core-pipeline:test :core-pairing:test
-      :core-transport:test` — 66 birim testi (2 Cue + 7 CaptionPipeline + 4
-      TvInputSelection + 3 CueEventCodec + 4 TvEventServer/Client + 9
-      PairingRegistry/Token + 4 QrMatrixEncoder + 9 PairingQrPayload (G024
-      v2 dahil) + 8 TvEvent+Pairing el sıkışma (G024'ün 3 TLS/fingerprint
-      testi dahil) + 6 TvCapabilities + 3 SocketTvReceiverAdapter (G022) +
-      7 TvNsdAttributes (G025), hepsi geçti; soket kullanan testler gerçek
-      127.0.0.1 loopback TCP/TLS bağlantıları üzerinden çalışır, mock
-      değil — bu kum havuzunda art arda 5 kez `--rerun-tasks` ile de
-      doğrulandı). Bu
+      :core-transport:test` — 98 birim testi (2026-11-09, G026-G029
+      eklemeleriyle 66'dan; bkz. yukarıdaki "G026-G029" bölümü — 8
+      CaptionDisplaySettings + 6 CueSequenceGuard + 1
+      TvEventServerReconnect + 5 yeni CueEventCodec doğrulama testi + 4
+      TrustedTvCodec + 8 TrustedTvRegistry eklendi). Önceki sayım: 2 Cue +
+      7 CaptionPipeline + 4 TvInputSelection + 3 CueEventCodec + 4
+      TvEventServer/Client + 9 PairingRegistry/Token + 4 QrMatrixEncoder +
+      9 PairingQrPayload (G024 v2 dahil) + 8 TvEvent+Pairing el sıkışma
+      (G024'ün 3 TLS/fingerprint testi dahil) + 6 TvCapabilities + 3
+      SocketTvReceiverAdapter (G022) + 7 TvNsdAttributes (G025), hepsi
+      geçti; soket kullanan testler gerçek 127.0.0.1 loopback TCP/TLS
+      bağlantıları üzerinden çalışır, mock değil — bu kum havuzunda art
+      arda birden çok kez `--rerun-tasks` ile de doğrulandı. Bu
       testler yazılırken/koşulurken İKİ gerçek hata
       bulundu ve düzeltildi (dürüstlük ilkesi için kayıt): (1) istemcinin
       `connect()`'i sunucunun handshake'i GERÇEKTEN doğruladığını
