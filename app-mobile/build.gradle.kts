@@ -47,6 +47,10 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            // G024: core-transport artık Bouncy Castle'a (bcprov/bcpkix/bcutil)
+            // bağımlı; üçü de aynı yoldaki bir OSGi manifest'ini taşıyor —
+            // bu, kod DEĞİL, sadece OSGi meta verisi, dışlamak güvenli.
+            excludes += "/META-INF/versions/9/OSGI-INF/MANIFEST.MF"
         }
     }
 }
