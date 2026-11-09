@@ -56,12 +56,41 @@ belgesi, bu depodaki ilk native iskeletin kurduğu sırayı **tersine
   taşımak daha güvenli bir sıra.
 
 **Pratik sonuç — bir sonraki gerçek iş:** `G001`-`G003` (hedef donanım kaydı,
-Profilo HDMI giriş keşfi, canlı HDMI üstüne sabit Türkçe yazı denemesi).
-Bunlar kod yazmadan önce **gerçek Profilo TV + Xbox'ta** elle/spike ile
+HDMI giriş keşfi, canlı HDMI üstüne sabit Türkçe yazı denemesi). Bunlar kod
+yazmadan önce **gerçek bir Android TV / Google TV cihazında** elle/spike ile
 denenmesi gereken adımlar; bu kum havuzunda donanım erişimi olmadığı için
 burada "tamamlandı" işaretlenemez — kullanıcının kendi TV'sinde yapılması
 gerekir (bkz. `docs/roadmap/tasks/todo.md` G001-G003 kabul/doğrulama
 kriterleri).
+
+### `app-tv` — G002/G003 kanıt (probe) APK'sı eklendi (2026-11-09)
+
+G002-G003'ü gerçek donanımda denemeyi mümkün kılmak için yeni bir Android
+modül eklendi: **`app-tv`**. Bu, **herhangi bir standart Android TV /
+Google TV** cihazında kurulabilen genel bir uygulamadır — Profilo'ya veya
+başka bir markaya özel hiçbir API kullanmaz, yalnızca AOSP'nin genel
+`android.media.tv.TvInputManager`/`TvView`/`TvContract` API'lerini
+kullanır.
+
+- Açılışta cihazdaki TV girişlerini listeler (`TvInputBridge`), HDMI
+  passthrough girişlerinden birini seçer (`core-model`'deki saf Kotlin
+  `selectPreferredHdmiPassthroughInput` — bu kum havuzunda **gerçekten
+  test edildi**, 4 birim testi geçti) ve `TvView` ile o girişe tune olmayı
+  dener (`PassthroughTuner`).
+- Ekranın altına, canlı güncellenen bir saat içeren sabit bir Türkçe test
+  yazısı bindirir (ı/İ/ş/Ğ/ü/ö/ç dahil) — saatin akması, yazının donmuş bir
+  ekran görüntüsü olmadığını, gerçekten üst üste render edildiğini
+  kanıtlamak içindir.
+- Birden fazla HDMI passthrough girişi bulunursa aralarında geçiş yapan bir
+  düğme sunar.
+
+**Doğrulanmadı (dürüstlük ilkesi):** `app-tv` bu kum havuzunda yerel olarak
+derlenmedi (Android SDK yok — diğer Android modülleriyle aynı sınırlama).
+Daha da önemlisi, **TvInputManager/TvView'ın gerçek bir Android TV/Google TV
+cihazında HDMI passthrough girişini listeleyip görüntü üstüne yazı
+bindirmesi hiç test edilmedi** — bu tam olarak G002/G003'ün kanıtlamaya
+çalıştığı şey. Kullanıcının bu APK'yı kendi TV'sine kurup sonucu
+`docs/compatibility/hardware.md` dosyasına işlemesi gerekiyor.
 
 ## Mimari pivotu (2026-11-09, ilk belge)
 
@@ -95,7 +124,11 @@ Tam kapsam, karar kapıları (G0-G5), riskler ve fazlı yol haritası (P0-P6) i�
 gamletsol/
 ├─ app-mobile/        # Android uygulaması: Compose UI, CameraX önizleme,
 │                      # ML Kit OCR/çeviri adaptörleri, TextToSpeech
-├─ core-model/         # Saf Kotlin — Cue, FrameRef, TextRegion, Session...
+├─ app-tv/             # Android TV / Google TV probe uygulaması — G001-G006
+│                      # (P0): TvInputManager ile HDMI girişi bul, TvView ile
+│                      # tune ol, sabit Türkçe test yazısı bindir
+├─ core-model/         # Saf Kotlin — Cue, FrameRef, TextRegion, Session,
+│                      # TvInputSummary/selectPreferredHdmiPassthroughInput...
 ├─ core-pipeline/      # Saf Kotlin — FrameSource/TextRecognizer/Translator/
 │                      # SubtitleSink/SpeechOutput arayüzleri + CaptionPipeline
 ├─ feature-capture/    # Android kütüphanesi — CameraX tabanlı CameraSource
@@ -110,11 +143,12 @@ Studio, CI'da GitHub'ın hazır SDK'lı ubuntu-latest imajı) derlenebilirler.
 
 Henüz eklenmeyen modüller (ilgili karar kapısı onaylandığında veya ihtiyaç
 ortaya çıktığında eklenecek) — isimler güncel yol haritasının (`docs/roadmap/`)
-önerdiği adlarla hizalandı: `app-tv/probe` (**sıradaki asıl iş — G001-G006,
-P0**), `core-transport` (TLS+QR eşleştirme, P3/G023-G024), `data-local`
-(Room/DataStore — kalıcı ayar/sözlük/trusted-devices, P2-P3), `feature-session`
-/`feature-tv-connect` (TV eşleştirme/QR, P3), `receiver-tizen`, `receiver-web`,
-`source-playstation`, `source-xbox` (X1-X4, koşullu), `backend/*` (P6-P7).
+önerdiği adlarla hizalandı: `core-transport` (TLS+QR eşleştirme,
+P3/G023-G024), `data-local` (Room/DataStore — kalıcı ayar/sözlük/
+trusted-devices, P2-P3), `feature-session`/`feature-tv-connect` (TV
+eşleştirme/QR, P3), `receiver-tizen`, `receiver-web`, `source-playstation`,
+`source-xbox` (X1-X4, koşullu), `backend/*` (P6-P7). `app-tv` artık
+eklendi (yukarıya bakın, G001-G006 kanıtı için).
 
 ## İlk sürümün yaptığı (ve yapmadığı)
 
@@ -142,27 +176,32 @@ ilkesi):**
 
 - [x] `core-model` ve `core-pipeline`: bu kum havuzunda **gerçekten
       derlendi ve test edildi** (`./gradlew :core-model:test
-      :core-pipeline:test` — 9 birim testi (2 + 7), hepsi geçti; JDK 21 ile,
-      CI'da ayrıca JDK 17 ile doğrulanacak).
-- [ ] `feature-capture` ve `app-mobile`: **bu kum havuzunda yerel olarak
-      DERLENMEDİ** — ortamda Android SDK yok ve SDK lisanslarını kabul etme
-      izni bu oturumda verilmedi. Kod, resmi CameraX/ML Kit/Compose
+      :core-pipeline:test` — 13 birim testi (2 Cue + 7 CaptionPipeline + 4
+      TvInputSelection), hepsi geçti; JDK 21 ile, CI'da ayrıca JDK 17 ile
+      doğrulanacak).
+- [ ] `feature-capture`, `app-mobile`, `app-tv`: **bu kum havuzunda yerel
+      olarak DERLENMEDİ** — ortamda Android SDK yok ve SDK lisanslarını
+      kabul etme izni bu oturumda verilmedi (`:app-tv:assembleDebug` da
+      aynı "SDK location not found" hatasıyla durdu — başka hiçbir yapı
+      hatası yok). Kod, resmi CameraX/ML Kit/Compose/`android.media.tv`
       dokümantasyonuna göre yazıldı ama derlemesi doğrulanmadı; bu, CI'nın
       (`.github/workflows/android.yml`, GitHub'ın hazır Android SDK'lı
       runner'ında çalışır) ilk görevidir.
 - [ ] Gerçek bir Android cihazda kamera + OCR + çeviri + TTS uçtan uca hiç
       denenmedi.
-- [ ] Profilo Android TV'de HDMI passthrough üzerine yazı çizme (artık
-      **G001-G006, P0** — güncel yol haritasının *tek* önceliği) henüz
-      araştırılmadı/kodlanmadı — bu ilk iskelet yalnızca telefon ekranını
-      hedefliyor. Bu kapı geçilmeden TV üstü çeviri özelliği "çalışıyor"
-      sayılmaz; ayrıntı için `docs/roadmap/tasks/todo.md` P0 bölümü.
+- [ ] Herhangi bir Android TV / Google TV cihazında HDMI passthrough
+      üzerine yazı çizme (**G001-G006, P0** — güncel yol haritasının *tek*
+      önceliği) için `app-tv` probe APK'si yazıldı ama **gerçek donanımda
+      hiç çalıştırılmadı**. Bu kapı geçilmeden TV üstü çeviri özelliği
+      "çalışıyor" sayılmaz; sonuçlar `docs/compatibility/hardware.md`'ye
+      işlenecek.
 
 ## Geliştirme
 
 ```bash
 ./gradlew :core-model:test :core-pipeline:test   # platformdan bağımsız birim testleri
-./gradlew :app-mobile:assembleDebug              # debug APK (Android SDK gerektirir)
+./gradlew :app-mobile:assembleDebug              # telefon debug APK (Android SDK gerektirir)
+./gradlew :app-tv:assembleDebug                  # TV probe debug APK (Android SDK gerektirir)
 ```
 
 Legacy Flutter projesi için bkz.

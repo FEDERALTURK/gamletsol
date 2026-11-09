@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Herhangi bir Android TV / Google TV cihazında kurulabilen genel bir
+  kanıt (probe) uygulaması. `android.software.leanback` özelliği
+  "required=false" bırakıldı ki geliştirme sırasında normal bir telefon/
+  tablette de (TV arayüzü olmadan, sadece debug amaçlı) kurulup
+  denenebilsin; gerçek hedef her zaman bir Android TV / Google TV
+  cihazıdır.
+
+  NOT (dürüstlük ilkesi): `android:banner` burada basit bir placeholder
+  drawable'a işaret ediyor — gerçek bir marka/logo tasarımı DEĞİLDİR,
+  yalnızca LEANBACK_LAUNCHER kategorisinin TV ana ekranında bir kart
+  gösterebilmesi için var.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-feature
+        android:name="android.software.leanback"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.touchscreen"
+        android:required="false" />
+
+    <application
+        android:allowBackup="false"
+        android:banner="@drawable/tv_probe_banner"
+        android:icon="@android:drawable/sym_def_app_icon"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.GamletsolTv">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.GamletsolTv">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

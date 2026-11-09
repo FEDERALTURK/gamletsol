@@ -39,16 +39,21 @@ jobs:
       - name: Unit tests (core-model, core-pipeline)
         run: ./gradlew :core-model:test :core-pipeline:test --stacktrace
 
-      - name: Lint (feature-capture, app-mobile)
-        run: ./gradlew :feature-capture:lintDebug :app-mobile:lintDebug --stacktrace
+      - name: Lint (feature-capture, app-mobile, app-tv)
+        run: ./gradlew :feature-capture:lintDebug :app-mobile:lintDebug :app-tv:lintDebug --stacktrace
 
-      - name: Assemble debug APK
-        run: ./gradlew :app-mobile:assembleDebug --stacktrace
+      - name: Assemble debug APKs
+        run: ./gradlew :app-mobile:assembleDebug :app-tv:assembleDebug --stacktrace
 
       - uses: actions/upload-artifact@v5
         with:
-          name: gamletsol-debug-apk
+          name: gamletsol-mobile-debug-apk
           path: app-mobile/build/outputs/apk/debug/app-mobile-debug.apk
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: gamletsol-tv-probe-debug-apk
+          path: app-tv/build/outputs/apk/debug/app-tv-debug.apk
 
       - uses: actions/upload-artifact@v5
         if: always()
@@ -57,3 +62,4 @@ jobs:
           path: |
             feature-capture/build/reports/lint-results-debug.html
             app-mobile/build/reports/lint-results-debug.html
+            app-tv/build/reports/lint-results-debug.html
