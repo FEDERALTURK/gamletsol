@@ -7,6 +7,10 @@ Türkçeye çeviren Android uygulaması. Güncel ve en ayrıntılı yol haritas�
 (G001–G072), özet [`docs/roadmap/tasks/plan.md`](docs/roadmap/tasks/plan.md),
 mimari şema [`docs/roadmap/GAMLETSOL_mimari.svg`](docs/roadmap/GAMLETSOL_mimari.svg).
 
+**Uygulamayı kurup kullanmak mı istiyorsunuz?** APK indirme, telefon/TV
+kurulumu, eşleştirme ve sorun giderme dahil adım adım rehber:
+[`docs/KULLANIM-KILAVUZU.md`](docs/KULLANIM-KILAVUZU.md).
+
 ## Yol haritası güncellemesi (2026-11-09, ikinci belge) — ÖNEMLİ SIRA DEĞİŞİKLİĞİ
 
 Kullanıcının yerel bilgisayarından okunan daha ayrıntılı/kesin yol haritası
