@@ -27,11 +27,14 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.foundation.layout.size
 import com.federalturk.gamletsol.core.model.tv.TvInputSummary
 import com.federalturk.gamletsol.core.model.tv.selectPreferredHdmiPassthroughInput
+import com.federalturk.gamletsol.core.pairing.PairingQrPayload
 import com.federalturk.gamletsol.core.pairing.PairingRegistry
 import com.federalturk.gamletsol.core.pairing.PairingResult
 import com.federalturk.gamletsol.core.pairing.PairingToken
+import com.federalturk.gamletsol.core.pairing.QrMatrixEncoder
 import com.federalturk.gamletsol.core.transport.CueEvent
 import com.federalturk.gamletsol.core.transport.TvEventServer
 import kotlinx.coroutines.delay
@@ -56,6 +59,10 @@ import java.util.Locale
  *    `TvEventServer`'ın `validatePairingCode` doğrulayıcısı bu kayda
  *    bağlanır — yanlış/süresi geçmiş/tekrar kullanılan bir kod artık
  *    bağlantıyı reddeder.
+ * 6. (G023, 2026-11-09) Aynı IP/port/kod'u bir [QrCodeView] ile QR kodu
+ *    olarak da gösterir — `app-mobile`'daki kamera tarayıcısı bunu
+ *    okuyabilir, kullanıcı artık üç alanı elle yazmak ZORUNDA değildir
+ *    (manuel giriş hâlâ var, bu yalnızca bir kısayol).
  *
  * NOT (dürüstlük ilkesi): #1-3 gerçek Profilo TV + Xbox donanımında HENÜZ
  * denenmedi (bkz. docs/compatibility/hardware.md). #4-#5'teki TCP sunucusu
@@ -63,8 +70,10 @@ import java.util.Locale
  * (core-transport + core-pairing modülleri) ama gerçek bir telefon ile
  * gerçek bir TV arasında, gerçek bir Wi-Fi ağında HENÜZ denenmedi. Kanal
  * hâlâ ŞİFRELENMEMİŞ — eşleştirme kodu yalnızca KİMLİK DOĞRULAMA sağlar,
- * G024'teki TLS/fingerprint doğrulaması hâlâ eklenmedi. Telefon tarafında
- * KAMERA İLE QR TARAMA da henüz yok — kullanıcı kodu elle girer.
+ * G024'teki TLS/fingerprint doğrulaması hâlâ eklenmedi. #6'daki QR'ın
+ * gerçek bir telefon kamerasıyla, gerçek bir TV ekranından (parlaklık,
+ * açı, mesafe) okunabilirliği de HENÜZ denenmedi — yalnızca QR üretiminin
+ * zxing ile birim test edilmiş doğruluğu kanıtlandı (core-pairing).
  */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -184,6 +193,23 @@ private fun TvProbeScreen() {
                         text = "Eşleştirme kodu: ${token.value}  (${remainingSeconds}s)",
                         color = Color(0xFFFFD54F),
                     )
+                    val ip = localIp
+                    val port = serverPort
+                    if (ip != null && port != null) {
+                        // G023 (QR kısmı): IP/port/kodu tek bir QR'a kodla —
+                        // kullanıcı telefonundaki kamerayla tarayabilir, üç
+                        // alanı elle yazmak zorunda kalmaz. Hata durumunda
+                        // (örn. zxing bir kodlama istisnası fırlatırsa) QR
+                        // sessizce gösterilmez — metin tabanlı alan/kod
+                        // zaten yukarıda görünür durumda, kullanıcı elle
+                        // girebilir (dürüstlük ilkesi: sahte/boş bir QR
+                        // göstermek yerine hiç göstermemek).
+                        val payload = PairingQrPayload(host = ip, port = port, code = token.value)
+                        val matrix = runCatching { QrMatrixEncoder.encode(payload.encode()) }.getOrNull()
+                        if (matrix != null) {
+                            QrCodeView(matrix = matrix, modifier = Modifier.size(160.dp))
+                        }
+                    }
                 } else {
                     Text(text = "Eşleştirme kodunun süresi doldu — yeni kod oluşturun", color = Color(0xFFE5484D))
                 }

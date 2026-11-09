@@ -60,6 +60,14 @@ import androidx.camera.view.PreviewView
  * özellik telefon↔TV bağlantısı kurup çeviriyi TV'ye yansıtmaktı — bu
  * yüzden menüye bir "TV'ye Yansıt" öğesi eklendi (bkz. [TvConnectDialog]),
  * P3/G022-G030'un ilk/MVP sürümü (core-transport modülü).
+ *
+ * NOT (2026-11-09, G023 QR tamamlandı): [scanningQr] `true` olduğunda, ana
+ * OCR kamerası ([CameraPreview]) composition'dan TAMAMEN kaldırılıp yerine
+ * [QrScannerScreen] gösterilir — ikisi AYNI ANDA bağlı DEĞİLDİR (tek bir
+ * `ProcessCameraProvider` örneği var, ikisi de kendi `bindToLifecycle`
+ * çağrısında `unbindAll()` yapıyor). `scanningQr` tekrar `false` olduğunda
+ * `CameraPreview` composition'a YENİDEN girer (View'ı AndroidView tarafından
+ * yeniden oluşturulur), bu da OCR kamerasını otomatik olarak yeniden bağlar.
  */
 @Composable
 fun CaptionScreen(
@@ -71,26 +79,39 @@ fun CaptionScreen(
     val cue by viewModel.subtitleSink.activeCue.collectAsState()
     val status by viewModel.pipelineStatus.collectAsState()
     val tvConnectionState by viewModel.tvConnectionState.collectAsState()
+    var scanningQr by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        if (granted) {
-            CameraPreview(viewModel = viewModel)
+        if (scanningQr) {
+            QrScannerScreen(
+                onResult = { payload ->
+                    scanningQr = false
+                    viewModel.connectToTv(payload.host, payload.port, payload.code)
+                },
+                onCancel = { scanningQr = false },
+            )
         } else {
-            PermissionRequestContent(onRequestCameraPermission = onRequestCameraPermission)
-        }
+            if (granted) {
+                CameraPreview(viewModel = viewModel)
+            } else {
+                PermissionRequestContent(onRequestCameraPermission = onRequestCameraPermission)
+            }
 
-        TopBar(
-            onShowOnboardingAgain = onShowOnboardingAgain,
-            tvConnectionState = tvConnectionState,
-            onConnectToTv = viewModel::connectToTv,
-            onDisconnectFromTv = viewModel::disconnectFromTv,
-        )
+            TopBar(
+                onShowOnboardingAgain = onShowOnboardingAgain,
+                tvConnectionState = tvConnectionState,
+                cameraPermissionGranted = granted,
+                onConnectToTv = viewModel::connectToTv,
+                onDisconnectFromTv = viewModel::disconnectFromTv,
+                onStartQrScan = { scanningQr = true },
+            )
 
-        val translated = cue?.translatedText
-        if (granted && !translated.isNullOrBlank()) {
-            SubtitleOverlay(original = cue?.originalText, translated = translated)
-        } else if (granted) {
-            StatusChip(status = status)
+            val translated = cue?.translatedText
+            if (granted && !translated.isNullOrBlank()) {
+                SubtitleOverlay(original = cue?.originalText, translated = translated)
+            } else if (granted) {
+                StatusChip(status = status)
+            }
         }
     }
 }
@@ -99,8 +120,10 @@ fun CaptionScreen(
 private fun BoxScope.TopBar(
     onShowOnboardingAgain: () -> Unit,
     tvConnectionState: TvConnectionState,
+    cameraPermissionGranted: Boolean,
     onConnectToTv: (String, Int, String) -> Unit,
     onDisconnectFromTv: () -> Unit,
+    onStartQrScan: () -> Unit,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     var dialog by remember { mutableStateOf<MenuDialog?>(null) }
@@ -174,9 +197,14 @@ private fun BoxScope.TopBar(
     when (dialog) {
         MenuDialog.TV_CONNECT -> TvConnectDialog(
             connectionState = tvConnectionState,
+            cameraPermissionGranted = cameraPermissionGranted,
             onConnect = onConnectToTv,
             onDisconnect = onDisconnectFromTv,
             onDismiss = { dialog = null },
+            onStartQrScan = {
+                dialog = null
+                onStartQrScan()
+            },
         )
         MenuDialog.SETUP -> InfoDialog(
             title = "Kurulum talimatları",
@@ -213,16 +241,21 @@ private enum class MenuDialog { TV_CONNECT, SETUP, PRIVACY, ABOUT }
 
 /**
  * "TV'ye Yansıt" diyaloğu — kullanıcının app-tv ekranında gördüğü IP:port'u
- * ve eşleştirme kodunu (G023) elle girip bağlanmasını sağlar (bkz. roadmap
- * P3, MVP: NSD/otomatik keşif ve KAMERA İLE QR TARAMA HENÜZ yok — kod elle
- * girilir). Bağlı olduğunda bağlantıyı kesme seçeneği de burada gösterilir.
+ * ve eşleştirme kodunu (G023) elle girip bağlanmasını, VEYA aynı bilgiyi
+ * taşıyan QR'ı kamerayla tarayıp (2026-11-09) tek adımda doldurmasını
+ * sağlar. Manuel giriş KALDIRILMADI — kameranın çalışmadığı/QR'ın
+ * okunamadığı durumlar için gereken yedek yol olarak kalıyor (roadmap'in
+ * zaten istediği manuel yol, G025). Bağlı olduğunda bağlantıyı kesme
+ * seçeneği de burada gösterilir.
  */
 @Composable
 private fun TvConnectDialog(
     connectionState: TvConnectionState,
+    cameraPermissionGranted: Boolean,
     onConnect: (String, Int, String) -> Unit,
     onDisconnect: () -> Unit,
     onDismiss: () -> Unit,
+    onStartQrScan: () -> Unit,
 ) {
     var host by remember { mutableStateOf("") }
     var portText by remember { mutableStateOf("48631") }
@@ -234,8 +267,10 @@ private fun TvConnectDialog(
         text = {
             Column {
                 Text(
-                    "TV uygulamasının (app-tv) ekranında gösterilen IP adresini, " +
-                        "port'u ve eşleştirme kodunu girin. Telefon ve TV AYNI " +
+                    "TV uygulamasının (app-tv) ekranında gösterilen QR kodunu " +
+                        "kamerayla tarayın — IP/port/eşleştirme kodu otomatik " +
+                        "doldurulur. QR görünmüyorsa/okunamıyorsa aynı bilgiyi " +
+                        "aşağıya elle de girebilirsiniz. Telefon ve TV AYNI " +
                         "Wi-Fi ağında olmalı. Eşleştirme kodu 60 saniye geçerlidir " +
                         "ve tek kullanımlıktır — süresi geçerse TV'de \"Yeni " +
                         "eşleştirme kodu oluştur\" düğmesine basın.\n\n" +
@@ -244,6 +279,20 @@ private fun TvConnectDialog(
                         "içi/güvendiğiniz bir ağda kullanın.",
                 )
                 Spacer(modifier = Modifier.height(12.dp))
+                if (connectionState != TvConnectionState.CONNECTED) {
+                    Button(onClick = onStartQrScan, enabled = cameraPermissionGranted) {
+                        Text("QR ile tara")
+                    }
+                    if (!cameraPermissionGranted) {
+                        Text(
+                            "QR taramak için önce kamera iznini verin (ana ekrandan).",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text("— veya elle girin —", style = MaterialTheme.typography.bodySmall)
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
                 OutlinedTextField(
                     value = host,
                     onValueChange = { host = it },

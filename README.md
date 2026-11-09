@@ -156,12 +156,11 @@ eksik kod) — hepsi roadmap'in G023 için açıkça istediği senaryoları
 - **Kanal hâlâ ŞİFRELENMEMİŞ** — eşleştirme kodu yalnızca KİMLİK DOĞRULAMA
   sağlar, şifreleme sağlamaz. G024'teki TLS + fingerprint doğrulaması henüz
   eklenmedi; yalnızca ev içi/güvenilir bir Wi-Fi ağında kullanılmalı.
-- **Kamera ile QR TARAMA YOK** — G023 başlığı "QR eşleştirme" dese de,
-  telefon tarafında kamera/QR kütüphanesi eklenmedi; kullanıcı TV'de
-  gösterilen kısa kodu elle yazıyor (bu, zaten G025'in gerektirdiği manuel
-  yedek yoldur).
-- **NSD (otomatik TV keşfi) YOK** — kullanıcı IP/port'u da elle girer
-  (G025 henüz eklenmedi).
+- **Kamera ile QR TARAMA artık VAR** (bkz. aşağıdaki "Kamerayla QR
+  eşleştirme" bölümü, 2026-11-09) — bu notun yazıldığı an itibariyle eksikti,
+  şimdi tamamlandı; yine de gerçek donanımda hiç denenmedi.
+- **NSD (otomatik TV keşfi) YOK** — QR, IP/port'u elle yazma ihtiyacını
+  kaldırdı ama gerçek bir mDNS/NSD broadcast'i DEĞİL (G025 henüz eklenmedi).
 - **Reconnect/hatırlama YOK** (G028-G029) — her bağlantı için TV'de yeni
   bir kod üretilmesi gerekir, "bu TV'yi hatırla" özelliği yok.
 - Gerçek bir telefon ile gerçek bir TV arasında, gerçek bir Wi-Fi ağında
@@ -221,6 +220,51 @@ ortadan kaldırdı: artık kodsuz bir istemcinin `connect()`'i, sunucu
 yetenek bildirimini göndermeden karşılıklı kilitlenip zaman aşımına
 uğradığı için, temiz ve HIZLI bir şekilde `null` döner (bkz. kod yorumları).
 
+### Kamerayla QR eşleştirme — G023'ün eksik kalan QR kısmı tamamlandı (2026-11-09)
+
+`core-pairing`/`core-transport` bölümlerinde "kamera ile QR TARAMA YOK"
+diye açıkça işaretlenen eksik artık kapatıldı:
+
+- **`core-pairing`**: `PairingQrPayload` (host/port/eşleştirme kodunu TEK
+  bir metne kodlar/çözer — `"gamletsol-pair:1;host=...;port=...;code=..."`)
+  + `QrMatrix`/`QrMatrixEncoder` (zxing-core ile, saf Kotlin/JVM — Android
+  bağımlılığı YOK, bu yüzden `core-pairing`'in "Android SDK gerektirmez"
+  kuralı bozulmadı).
+- **`app-tv`**: eşleştirme kodunun yanına, aynı host/port/kodu taşıyan bir
+  QR kodu da çiziliyor (`QrCodeView`, salt Compose `Canvas` ile — ek bir
+  Android QR kütüphanesi gerekmedi).
+- **`app-mobile`**: "TV'ye Yansıt" diyaloğuna bir "QR ile tara" düğmesi
+  eklendi; basıldığında tam ekran bir kamera tarayıcısı (`QrScannerScreen`,
+  CameraX + ML Kit `barcode-scanning`) açılır, QR okunduğunda IP/port/kod
+  OTOMATİK doldurulup bağlantı başlatılır. **Manuel giriş alanları
+  KALDIRILMADI** — QR okunamazsa/kamerası yoksa kullanıcı hâlâ elle
+  girebilir (roadmap'in zaten istediği yedek yol, G025).
+- Ana OCR kamerası ile QR tarayıcı AYNI ANDA bağlı değildir: QR tarama
+  ekranı açıldığında ana kamera composition'dan tamamen kaldırılıp
+  `ProcessCameraProvider.unbindAll()` + yeni bir bağlama yapılır; tarama
+  bitip ana ekrana dönüldüğünde `CameraPreview` composable'ı YENİDEN
+  oluşturulduğu için OCR kamerası otomatik olarak yeniden bağlanır.
+
+**Gerçekten doğrulanan:** `PairingQrPayload`'ın kodlama/kod çözme
+davranışı (7 test — round-trip, eksik/bozuk alan, bilinmeyen sürüm,
+ilgisiz bir QR'ın [ör. Wi-Fi QR'ı] sessizce reddi) ve `QrMatrixEncoder`'ın
+zxing ile gerçekten kare, hem karanlık hem açık hücreler içeren bir matris
+ürettiği (4 test) — core-pairing artık 20 test (önceden 9).
+
+**Doğrulanmadı / dürüstçe eksik kalan (MVP sınırı):**
+- Bu QR'ın gerçek bir TV ekranından, gerçek bir telefon kamerasıyla
+  (parlaklık, açı, mesafe, ekran yansıması) okunup okunamadığı bu kum
+  havuzunda **hiç denenmedi** — yalnızca kodlama/kod çözme mantığı birim
+  test edildi, kamera/gerçek donanım yok.
+- QR, yalnızca IP/port/kodu taşır — bu hâlâ NSD/mDNS tabanlı gerçek bir
+  otomatik keşif DEĞİLDİR (G025 hâlâ eksik); QR'ı göstermek/taramak için
+  kullanıcı hâlâ ilgili ekranları açmalıdır.
+- G024 (TLS + sertifika fingerprint) hâlâ eklenmedi — ama QR artık
+  çalıştığı için, roadmap'in orijinal tasarımındaki engel (fingerprint
+  hash'ini elle yazmanın pratik olmaması) ortadan kalktı; G024 artık QR
+  payload'ına bir fingerprint alanı eklenerek bir sonraki adımda ele
+  alınabilir.
+
 ## Mimari pivotu (2026-11-09, ilk belge)
 
 Bu depo başlangıçta mikrofonla TV/konsol sesini dinleyip buluta gönderen bir
@@ -259,7 +303,9 @@ gamletsol/
 ├─ core-model/         # Saf Kotlin — Cue, FrameRef, TextRegion, Session,
 │                      # TvInputSummary/selectPreferredHdmiPassthroughInput...
 ├─ core-pairing/       # Saf Kotlin — PairingToken/PairingTokenGenerator/
-│                      # PairingRegistry (tek kullanımlık eşleştirme kodu, G023)
+│                      # PairingRegistry (tek kullanımlık eşleştirme kodu,
+│                      # G023) + PairingQrPayload/QrMatrix/QrMatrixEncoder
+│                      # (QR kodlama/kod çözme, zxing-core ile)
 ├─ core-pipeline/      # Saf Kotlin — FrameSource/TextRecognizer/Translator/
 │                      # SubtitleSink/SpeechOutput arayüzleri + CaptionPipeline
 ├─ core-transport/     # Saf Kotlin — CueEvent/CueEventCodec + TvEventServer/
@@ -315,9 +361,10 @@ ilkesi):**
 - [x] `core-model`, `core-pipeline`, `core-pairing`, `core-transport`: bu
       kum havuzunda **gerçekten derlendi ve test edildi** (`./gradlew
       :core-model:test :core-pipeline:test :core-pairing:test
-      :core-transport:test` — 43 birim testi (2 Cue + 7 CaptionPipeline + 4
+      :core-transport:test` — 54 birim testi (2 Cue + 7 CaptionPipeline + 4
       TvInputSelection + 3 CueEventCodec + 4 TvEventServer/Client + 9
-      core-pairing + 5 TvEvent+Pairing el sıkışma + 6 TvCapabilities + 3
+      PairingRegistry/Token + 11 PairingQrPayload/QrMatrixEncoder (QR) + 5
+      TvEvent+Pairing el sıkışma + 6 TvCapabilities + 3
       SocketTvReceiverAdapter (G022), hepsi geçti; soket kullanan testler
       gerçek 127.0.0.1 loopback TCP bağlantıları üzerinden çalışır, mock
       değil — bu kum havuzunda art arda 5 kez `--rerun-tasks` ile de
@@ -363,11 +410,13 @@ ilkesi):**
       işlenecek.
 - [ ] Telefon↔TV bağlantısı (P3/G022-G023, `core-transport` + `core-pairing`
       + "TV'ye Yansıt" menüsü): kod yazıldı, gerçek loopback soket
-      testleriyle doğrulandı (eşleştirme kodu + yetenek sözleşmesi dahil),
-      ama **gerçek bir telefon ile gerçek bir TV arasında, gerçek bir
-      Wi-Fi ağında hiç denenmedi**. Kanal hâlâ şifrelenmemiş (G024 yok),
-      QR kamera taraması ve otomatik keşif de yok (G025) — bkz. yukarıdaki
-      `core-pairing`/`core-transport` G022 bölümleri.
+      testleriyle doğrulandı (eşleştirme kodu + yetenek sözleşmesi + QR
+      kodlama/kod çözme dahil), ama **gerçek bir telefon ile gerçek bir TV
+      arasında, gerçek bir Wi-Fi ağında hiç denenmedi** — QR'ın gerçek bir
+      kamerayla gerçek bir TV ekranından okunup okunamadığı da dahil. Kanal
+      hâlâ şifrelenmemiş (G024 yok), gerçek otomatik keşif (NSD/mDNS) de
+      yok (G025) — bkz. yukarıdaki `core-pairing`/`core-transport`/
+      "Kamerayla QR eşleştirme" bölümleri.
 
 ## Geliştirme
 

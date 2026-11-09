@@ -53,6 +53,7 @@ android {
 
 dependencies {
     implementation(project(":core-model"))
+    implementation(project(":core-pairing"))
     implementation(project(":core-pipeline"))
     implementation(project(":core-transport"))
     implementation(project(":feature-capture"))
@@ -76,6 +77,11 @@ dependencies {
 
     implementation(libs.mlkit.text.recognition)
     implementation(libs.mlkit.translate)
+    // G023/G025: TV'de gösterilen eşleştirme QR'ını kamerayla okumak için
+    // (bkz. ui/QrScannerScreen.kt) — bu, kodu elle yazma zorunluluğunu
+    // (eski MVP sınırı) kaldırır; manuel alan hâlâ var, bu yalnızca bir
+    // kısayoldur.
+    implementation(libs.mlkit.barcode.scanning)
 
     implementation(libs.kotlinx.coroutines.android)
 
