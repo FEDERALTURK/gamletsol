@@ -173,6 +173,54 @@ eksik kod) — hepsi roadmap'in G023 için açıkça istediği senaryoları
   göstermek yeterli), ama tam "oyun görüntüsü + çeviri aynı TV ekranında"
   vaadi için G001-G003'ün de ayrıca doğrulanması gerekiyor.
 
+### `core-transport` — TV yetenek sözleşmesi (G022, 2026-11-09)
+
+Yol haritasındaki `TvReceiverAdapter (probeCapabilities, pair, sendSubtitle,
+sendLayout, clear, heartbeat, disconnect)` arayüzü eklendi:
+
+- **`TvCapabilities`**: TV'nin desteklediği protokol sürümü + üç bayrak
+  (`clear`, `heartbeat`, `layout`). `TvEventServer`, eşleştirme adımından
+  (varsa) SONRA, cue döngüsüne girmeden önce bunu HER bağlantıda tek satır
+  olarak gönderir; `TvEventClient.connect()` bunu okuyup `capabilities`
+  olarak saklar — satır eksik/bozuksa (eski/uyumsuz bir taraf) bağlantı
+  `null` döner, tıpkı eşleştirme reddi gibi.
+- **`TvReceiverAdapter`** arayüzü + **`SocketTvReceiverAdapter`** (bu
+  modüldeki TCP istemcisini saran tek uygulama) eklendi.
+  `TvRelaySubtitleSink` (app-mobile) artık doğrudan `TvEventClient`'a değil
+  bu arayüze bağlı — ileride başka bir TV ailesi (Samsung/LG) eklenirse
+  `TvRelaySubtitleSink`'in değişmesi gerekmeyecek.
+- Roadmap'teki `pair` ve `probeCapabilities` metodları burada AYRI çağrılar
+  DEĞİL: `pair`, `TvEventClient.connect()`'in zaten bir parçası; yetenek
+  bildirimi de bağlanırken otomatik alınıyor, ayrıca sorulmuyor.
+
+**Dürüstçe eksik/kısıtlı olanlar:**
+- `TvCapabilities.CURRENT` şu an HER ZAMAN aynı sabit değeri gönderiyor —
+  gerçek, çalışma-zamanında-değişen bir yetenek keşfi değil (tek bir TV
+  alıcısı uygulaması olduğu için henüz gerek yok).
+- `clear` ve `layout` bayrakları `false` — protokolde "temizle" mesaj türü
+  ve Akıllı Ekran hâlâ yok.
+- `heartbeat()` **gerçek bir round-trip PING/PONG DEĞİL** — yalnızca yerel
+  soket durumunu kontrol ediyor; karşı tarafın ağ bağlantısını sessizce
+  kaybetmesi (Wi-Fi kopması, çökme) hâlâ fark edilemeyebilir. Gerçek
+  canlılık kontrolü G028'e (yeniden bağlanma/oturum yönetimi) bırakıldı.
+- G024 (TLS + sertifika fingerprint) hâlâ eklenmedi — roadmap'in kendi
+  eşleştirme akışı tasarımı (TV sertifika fingerprint'ini QR'da gösterip
+  telefonun kamerayla taraması) kamera tabanlı QR okumayı gerektiriyor;
+  bu depoda QR kamera taraması henüz yok (bkz. yukarıdaki core-pairing
+  notu) — 64 karakterlik bir hash'i elle yazmak pratik değil, bu yüzden
+  G024, kamera/QR eklenene kadar bilerek bekletiliyor.
+
+**Gerçekten doğrulanan:** `TvCapabilities.encode()`/`decode()` round-trip
+ve bozuk/eksik satır davranışı (6 test), `SocketTvReceiverAdapter`'ın gerçek
+bir loopback soketi üzerinde yetenek bildirimini doğru okuduğu ve
+`sendSubtitle`/`clear`/`heartbeat`/`disconnect`'in sözleşmeye uyduğu (3
+test), ve eşleştirmeden sonra istemcinin yetenek bildirimini aldığı (1 yeni
+test, `TvEventPairingHandshakeTest`). Ayrıca bu değişiklik, eski
+`"missing pairing code"` testindeki flaky "eventually fails" kontrolünü
+ortadan kaldırdı: artık kodsuz bir istemcinin `connect()`'i, sunucu
+yetenek bildirimini göndermeden karşılıklı kilitlenip zaman aşımına
+uğradığı için, temiz ve HIZLI bir şekilde `null` döner (bkz. kod yorumları).
+
 ## Mimari pivotu (2026-11-09, ilk belge)
 
 Bu depo başlangıçta mikrofonla TV/konsol sesini dinleyip buluta gönderen bir
@@ -215,7 +263,9 @@ gamletsol/
 ├─ core-pipeline/      # Saf Kotlin — FrameSource/TextRecognizer/Translator/
 │                      # SubtitleSink/SpeechOutput arayüzleri + CaptionPipeline
 ├─ core-transport/     # Saf Kotlin — CueEvent/CueEventCodec + TvEventServer/
-│                      # TvEventClient (telefon↔TV TCP taşıma, P3/G022-G030 MVP)
+│                      # TvEventClient (telefon↔TV TCP taşıma) + TvCapabilities/
+│                      # TvReceiverAdapter/SocketTvReceiverAdapter (G022 yetenek
+│                      # sözleşmesi) — P3/G022-G030 MVP
 ├─ feature-capture/    # Android kütüphanesi — CameraX tabanlı CameraSource
 └─ legacy-flutter-mic-stt/  # DONDURULMUŞ eski Flutter/mikrofon+ASR MVP'si
 ```
@@ -232,8 +282,8 @@ ortaya çıktığında eklenecek) — isimler güncel yol haritasının (`docs/r
 trusted-devices, P2-P3), `feature-tv-connect` (NSD/otomatik keşif, G025),
 `receiver-tizen`, `receiver-web`, `source-playstation`, `source-xbox` (X1-X4,
 koşullu), `backend/*` (P6-P7). `app-tv`, `core-transport` ve `core-pairing`
-artık eklendi (yukarıya bakın) — birlikte G022/G023'ün MVP'sidir (yetenek
-bildirimi + tek kullanımlık eşleştirme kodu); G024'teki TLS/fingerprint
+artık eklendi (yukarıya bakın) — birlikte G022/G023'ü tamamlıyor (TV yetenek
+sözleşmesi + tek kullanımlık eşleştirme kodu); G024'teki TLS/fingerprint
 katmanı ve G025'teki otomatik keşif hâlâ eksik.
 
 ## İlk sürümün yaptığı (ve yapmadığı)
@@ -265,11 +315,13 @@ ilkesi):**
 - [x] `core-model`, `core-pipeline`, `core-pairing`, `core-transport`: bu
       kum havuzunda **gerçekten derlendi ve test edildi** (`./gradlew
       :core-model:test :core-pipeline:test :core-pairing:test
-      :core-transport:test` — 33 birim testi (2 Cue + 7 CaptionPipeline + 4
+      :core-transport:test` — 43 birim testi (2 Cue + 7 CaptionPipeline + 4
       TvInputSelection + 3 CueEventCodec + 4 TvEventServer/Client + 9
-      core-pairing + 4 TvEvent+Pairing el sıkışma, hepsi geçti; soket
-      kullanan testler gerçek 127.0.0.1 loopback TCP bağlantıları üzerinden
-      çalışır, mock değil). Bu testler yazılırken/koşulurken İKİ gerçek hata
+      core-pairing + 5 TvEvent+Pairing el sıkışma + 6 TvCapabilities + 3
+      SocketTvReceiverAdapter (G022), hepsi geçti; soket kullanan testler
+      gerçek 127.0.0.1 loopback TCP bağlantıları üzerinden çalışır, mock
+      değil — bu kum havuzunda art arda 5 kez `--rerun-tasks` ile de
+      doğrulandı). Bu testler yazılırken/koşulurken İKİ gerçek hata
       bulundu ve düzeltildi (dürüstlük ilkesi için kayıt): (1) istemcinin
       `connect()`'i sunucunun handshake'i GERÇEKTEN doğruladığını
       beklemiyordu, yalnızca yazmanın başarılı olmasına bakıyordu — artık
@@ -311,11 +363,11 @@ ilkesi):**
       işlenecek.
 - [ ] Telefon↔TV bağlantısı (P3/G022-G023, `core-transport` + `core-pairing`
       + "TV'ye Yansıt" menüsü): kod yazıldı, gerçek loopback soket
-      testleriyle doğrulandı (eşleştirme kodu dahil), ama **gerçek bir
-      telefon ile gerçek bir TV arasında, gerçek bir Wi-Fi ağında hiç
-      denenmedi**. Kanal hâlâ şifrelenmemiş (G024 yok), QR kamera taraması
-      ve otomatik keşif de yok (G025) — bkz. yukarıdaki `core-pairing`
-      bölümü.
+      testleriyle doğrulandı (eşleştirme kodu + yetenek sözleşmesi dahil),
+      ama **gerçek bir telefon ile gerçek bir TV arasında, gerçek bir
+      Wi-Fi ağında hiç denenmedi**. Kanal hâlâ şifrelenmemiş (G024 yok),
+      QR kamera taraması ve otomatik keşif de yok (G025) — bkz. yukarıdaki
+      `core-pairing`/`core-transport` G022 bölümleri.
 
 ## Geliştirme
 

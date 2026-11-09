@@ -22,17 +22,26 @@ import java.net.Socket
  * build.gradle.kts notu). Bağlantı koptuğunda otomatik yeniden bağlanma
  * YOK — çağıran kod (app-mobile) [isConnected] durumunu kontrol edip
  * gerekirse yeni bir [TvEventClient] oluşturmalıdır.
+ *
+ * G022 (TV yetenek sözleşmesi): eşleştirme adımından (varsa) SONRA, TV
+ * HER ZAMAN bir [TvCapabilities] satırı gönderir — [connect] bunu okuyup
+ * [capabilities]'e kaydeder; satır eksik/bozuksa (eski/uyumsuz bir sunucu,
+ * ya da ağ hatası) bu da bağlantı hatası sayılır ve `connect()` `null` döner.
  */
 class TvEventClient private constructor(private val socket: Socket) {
     private val writer = BufferedWriter(OutputStreamWriter(socket.outputStream, Charsets.UTF_8))
 
-    // Yalnızca [connect]'teki handshake yanıtını okumak için kullanılır —
-    // handshake'ten sonra TV telefona hiçbir satır göndermez (protokol
-    // tek yönlüdür, telefon → TV), bu yüzden bu reader'ın normal [send]
-    // akışında bir karşılığı yoktur.
+    // [connect]'teki handshake yanıtını VE yetenek sözleşmesi satırını
+    // okumak için kullanılır — bunlardan sonra TV telefona hiçbir satır
+    // göndermez (protokol tek yönlüdür, telefon → TV), bu yüzden bu
+    // reader'ın normal [send] akışında bir karşılığı yoktur.
     private val reader = BufferedReader(InputStreamReader(socket.inputStream, Charsets.UTF_8))
 
     val isConnected: Boolean get() = socket.isConnected && !socket.isClosed
+
+    /** [connect] sırasında TV'den alınan, bağlantı boyunca değişmeyen yetenek bildirimi. */
+    lateinit var capabilities: TvCapabilities
+        private set
 
     /** Gönderimi başarılıysa `true`, bağlantı/akış hatasında `false` döner. */
     fun send(event: CueEvent): Boolean {
@@ -83,6 +92,28 @@ class TvEventClient private constructor(private val socket: Socket) {
                         return null
                     }
                 }
+
+                // G022: eşleştirme adımı atlandıysa/başarıyla tamamlandıysa,
+                // TV'nin bir sonraki (ve tek yönlü protokolde TV'den gelecek
+                // SON) satırı her zaman yetenek bildirimi olmalıdır. Bu
+                // satır eksik/bozuksa bağlantı kullanılamaz sayılır — eski/
+                // uyumsuz bir sunucuyla (bu protokol sürümünden önceki) veya
+                // ağ hatasıyla aynı şekilde ele alınır (MVP sınırı, ayrıştırılmaz).
+                val capsLine = try {
+                    socket.soTimeout = timeoutMs
+                    client.reader.readLine()
+                } catch (e: Exception) {
+                    null
+                } finally {
+                    socket.soTimeout = 0
+                }
+                val capabilities = TvCapabilities.decode(capsLine)
+                if (capabilities == null) {
+                    client.close()
+                    return null
+                }
+                client.capabilities = capabilities
+
                 client
             } catch (e: Exception) {
                 null

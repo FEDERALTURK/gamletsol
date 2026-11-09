@@ -104,25 +104,43 @@ class TvEventPairingHandshakeTest {
         s.start()
 
         // Hiç handshake göndermeyen eski/uyumsuz bir istemciyi simüle et.
-        val c = TvEventClient.connect("127.0.0.1", s.boundPort, pairingCode = null)
+        //
+        // DÜZELTME (G022 eklenmesiyle davranış değişti, kodun/testin eskisi
+        // yerine): Önceden connect() burada `null` DEĞİL döndürüyordu —
+        // bağlantı "başarılı" sayılıyor ama kullanılamaz hale geliyordu
+        // (ilk cue satırı sunucu tarafında handshake olarak yorumlanıp
+        // reddediliyordu, bu da ancak sonraki bir `send()` başarısızlığıyla
+        // fark edilebiliyordu — flaky bir "eventually fails" testiydi).
+        // Artık TV, eşleştirmeden SONRA her zaman bir yetenek satırı
+        // ([TvCapabilities]) gönderiyor; kodsuz istemci hiç PAIR: yazmadığı
+        // için sunucu o satırı asla okuyamaz (sunucu okumayı, istemci de
+        // okumayı bekler — karşılıklı kilitlenme), istemcinin okuması
+        // zaman aşımına uğrar ve connect() temiz bir şekilde `null` döner.
+        // Bu, önceki flaky kontrolden daha doğru ve daha hızlı bir sonuçtur.
+        val c = TvEventClient.connect("127.0.0.1", s.boundPort, pairingCode = null, timeoutMs = 1_000)
         client = c
-        assertTrue("connect() itself succeeds without a code", c != null)
-        // Ama sunucu PAIR: satırı beklerken herhangi bir cue satırı gelirse
-        // onu asla doğru şekilde bir handshake olarak kabul etmeyecek, bu
-        // yüzden bağlantı kullanılamaz hale gelir (ilk satır handshake
-        // olarak YORUMLANIR ve reddedilir).
-        val sendResult = (1..10).map { c!!.send(CueEvent("x", "y", 0L)) }
-        // En azından ilk gönderimlerden biri, sunucu bağlantıyı kapattıktan
-        // sonra başarısız olmalı (TCP zamanlamasına bağlı, bu yüzden birden
-        // fazla deneme + kısa gecikme ile sağlamlaştırıldı).
-        var sawFailure = sendResult.any { !it }
-        if (!sawFailure) {
-            val deadline = System.currentTimeMillis() + 2_000
-            while (!sawFailure && System.currentTimeMillis() < deadline) {
-                Thread.sleep(50)
-                sawFailure = !c!!.send(CueEvent("x", "y", 0L))
-            }
-        }
-        assertTrue("sending without a pairing code should eventually fail", sawFailure)
+        assertNull("connect() without a code must fail outright when the TV requires pairing", c)
+    }
+
+    @Test
+    fun `successful handshake also yields the TV's capability declaration`() {
+        val registry = PairingRegistry()
+        val token = registry.issue()
+
+        val s = TvEventServer(
+            port = 0,
+            validatePairingCode = { code -> registry.validateAndConsume(code) == PairingResult.VALID },
+        ) { }
+        server = s
+        s.start()
+
+        val c = TvEventClient.connect("127.0.0.1", s.boundPort, pairingCode = token.value)
+        client = c
+        assertTrue("handshake should succeed", c != null)
+        assertEquals(
+            "client should learn the TV's current capability declaration after pairing",
+            TvCapabilities.CURRENT,
+            c!!.capabilities,
+        )
     }
 }

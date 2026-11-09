@@ -119,10 +119,10 @@ class TvEventServer(
     private fun handleClient(socket: Socket) {
         try {
             val reader = BufferedReader(InputStreamReader(socket.inputStream, Charsets.UTF_8))
+            val writer = BufferedWriter(OutputStreamWriter(socket.outputStream, Charsets.UTF_8))
 
             val validator = validatePairingCode
             if (validator != null) {
-                val writer = BufferedWriter(OutputStreamWriter(socket.outputStream, Charsets.UTF_8))
                 val handshakeLine = try {
                     reader.readLine()
                 } catch (e: Exception) {
@@ -144,6 +144,21 @@ class TvEventServer(
                     // okuyup kendisi de bağlantıyı kapatacaktır).
                     return
                 }
+            }
+
+            // G022 (TV yetenek sözleşmesi): eşleştirme adımı atlandıysa/
+            // başarıyla tamamlandıysa, cue döngüsüne girmeden önce TV'nin
+            // desteklediği protokol sürümü/özellikleri TEK SATIR olarak
+            // gönderilir — bkz. TvCapabilities dokümantasyonu. İstemci
+            // (TvEventClient.connect) bu satırı okumadan bağlantıyı
+            // kullanılabilir saymaz; bu yüzden bu yazma başarısız olursa
+            // bağlantı burada bırakılır (istemci zaten `null` dönecektir).
+            try {
+                writer.write(TvCapabilities.CURRENT.encode())
+                writer.newLine()
+                writer.flush()
+            } catch (e: Exception) {
+                return
             }
 
             while (running.get()) {
