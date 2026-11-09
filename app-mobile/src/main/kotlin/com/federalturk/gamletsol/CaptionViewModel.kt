@@ -25,10 +25,27 @@ import kotlinx.coroutines.launch
  * bağlama kararı (hangi use-case'ler, hangi lifecycle) Composable tarafında
  * alınır; bu sınıf yalnızca [bindCamera] ile elindeki parçaları birleştirir.
  */
+/**
+ * Kullanıcıya gösterilecek durum — eklenme nedeni: ilk beta sürümünde
+ * ekranda kamera önizlemesi dışında HİÇBİR geri bildirim yoktu (izin
+ * verildikten sonra herhangi bir metin/menü/başlık görünmüyordu); bu alan
+ * [com.federalturk.gamletsol.ui.CaptionScreen]'deki üst bar/durum satırının
+ * neyi göstereceğine karar vermek için eklendi.
+ */
+enum class PipelineStatus {
+    STARTING,
+    DOWNLOADING_TRANSLATION_MODEL,
+    MODEL_DOWNLOAD_FAILED,
+    SCANNING,
+}
+
 class CaptionViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _cameraPermissionGranted = MutableStateFlow(false)
     val cameraPermissionGranted: StateFlow<Boolean> = _cameraPermissionGranted.asStateFlow()
+
+    private val _pipelineStatus = MutableStateFlow(PipelineStatus.STARTING)
+    val pipelineStatus: StateFlow<PipelineStatus> = _pipelineStatus.asStateFlow()
 
     val subtitleSink = PhoneScreenSubtitleSink()
 
@@ -69,13 +86,19 @@ class CaptionViewModel(application: Application) : AndroidViewModel(application)
         pipelineStarted = true
 
         viewModelScope.launch {
-            // NOT (dürüstlük ilkesi): Model indirmesi başarısız olursa (ör.
-            // Wi-Fi yok) burada sessizce yutulur ve pipeline yine de
-            // başlatılır — ML Kit modeli hazır olana kadar `translate()`
-            // çağrıları askıda kalır/hata verebilir. Gerçek bir "model
-            // indiriliyor" durumu kullanıcıya gösterilmiyor; bu P2/P4
-            // kapsamında (kalite/hata durumları) ele alınacak.
-            runCatching { translator.ensureModelDownloaded() }
+            _pipelineStatus.value = PipelineStatus.DOWNLOADING_TRANSLATION_MODEL
+            val modelResult = runCatching { translator.ensureModelDownloaded() }
+            // NOT (dürüstlük ilkesi): Model indirme başarısız olsa bile
+            // (ör. Wi-Fi yok) pipeline yine başlatılıyor — ML Kit modeli
+            // hazır olana kadar sonraki `translate()` çağrıları askıda
+            // kalabilir/hata verebilir. `MODEL_DOWNLOAD_FAILED` durumu
+            // kullanıcıya gösteriliyor (bkz. CaptionScreen) ama otomatik
+            // yeniden deneme YOK — bu hâlâ P2/P4 kapsamında ele alınacak.
+            _pipelineStatus.value = if (modelResult.isSuccess) {
+                PipelineStatus.SCANNING
+            } else {
+                PipelineStatus.MODEL_DOWNLOAD_FAILED
+            }
 
             val pipeline = CaptionPipeline(
                 frameSource = frameSource,
