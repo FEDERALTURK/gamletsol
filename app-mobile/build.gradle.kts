@@ -54,6 +54,7 @@ android {
 dependencies {
     implementation(project(":core-model"))
     implementation(project(":core-pipeline"))
+    implementation(project(":core-transport"))
     implementation(project(":feature-capture"))
 
     implementation(libs.androidx.core.ktx)

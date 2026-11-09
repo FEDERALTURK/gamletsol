@@ -12,12 +12,15 @@ import com.federalturk.gamletsol.feature.capture.CameraXFrameSource
 import com.federalturk.gamletsol.ocr.MlKitTextRecognizer
 import com.federalturk.gamletsol.speech.AndroidTtsSpeechOutput
 import com.federalturk.gamletsol.translate.MlKitTranslator
+import com.federalturk.gamletsol.tv.TvRelaySubtitleSink
 import com.federalturk.gamletsol.ui.PhoneScreenSubtitleSink
 import java.util.concurrent.Executors
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Yakalama → OCR → çeviri → altyazı hattını (bkz. core-pipeline
@@ -39,6 +42,19 @@ enum class PipelineStatus {
     SCANNING,
 }
 
+/**
+ * "TV'ye Yansıt" bağlantısının durumu (yol haritası P3/G022-G030, MVP).
+ * Eklenme nedeni: kullanıcının asıl istediği özellik telefon↔TV çeviri
+ * yansıtmasıydı — bu alan, CaptionScreen'deki bağlantı diyaloğunun hangi
+ * mesajı/butonu göstereceğine karar vermesi için var.
+ */
+enum class TvConnectionState {
+    DISCONNECTED,
+    CONNECTING,
+    CONNECTED,
+    FAILED,
+}
+
 class CaptionViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _cameraPermissionGranted = MutableStateFlow(false)
@@ -48,6 +64,34 @@ class CaptionViewModel(application: Application) : AndroidViewModel(application)
     val pipelineStatus: StateFlow<PipelineStatus> = _pipelineStatus.asStateFlow()
 
     val subtitleSink = PhoneScreenSubtitleSink()
+    private val tvRelaySink = TvRelaySubtitleSink()
+
+    private val _tvConnectionState = MutableStateFlow(TvConnectionState.DISCONNECTED)
+    val tvConnectionState: StateFlow<TvConnectionState> = _tvConnectionState.asStateFlow()
+
+    /**
+     * TV'ye bağlanmayı dener (bloklayan soket çağrısı `Dispatchers.IO`'da
+     * çalışır). Başarılı olursa, pipeline'ın ürettiği her yeni cue otomatik
+     * olarak [tvRelaySink] üzerinden TV'ye gönderilmeye başlar.
+     */
+    fun connectToTv(host: String, port: Int) {
+        viewModelScope.launch {
+            _tvConnectionState.value = TvConnectionState.CONNECTING
+            val connected = withContext(Dispatchers.IO) {
+                tvRelaySink.connectBlocking(host, port)
+            }
+            _tvConnectionState.value = if (connected) {
+                TvConnectionState.CONNECTED
+            } else {
+                TvConnectionState.FAILED
+            }
+        }
+    }
+
+    fun disconnectFromTv() {
+        tvRelaySink.disconnect()
+        _tvConnectionState.value = TvConnectionState.DISCONNECTED
+    }
 
     private val cameraExecutor = Executors.newSingleThreadExecutor()
     private val translator = MlKitTranslator()
@@ -104,7 +148,7 @@ class CaptionViewModel(application: Application) : AndroidViewModel(application)
                 frameSource = frameSource,
                 textRecognizer = MlKitTextRecognizer(),
                 translator = translator,
-                sinks = listOf(subtitleSink),
+                sinks = listOf(subtitleSink, tvRelaySink),
                 speechOutput = speechOutput,
             )
             pipeline.run()
@@ -116,5 +160,6 @@ class CaptionViewModel(application: Application) : AndroidViewModel(application)
         cameraExecutor.shutdown()
         translator.close()
         speechOutput.shutdown()
+        tvRelaySink.disconnect()
     }
 }

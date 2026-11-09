@@ -6,6 +6,16 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera.any" android:required="true" />
 
+    <!-- P3/G022-G030 (telefon↔TV cue taşıma, core-transport): "TV'ye
+         Yansıt" özelliği, kullanıcının elle girdiği TV IP/port'una düz bir
+         TCP soketiyle bağlanır. Bu, HTTP(S) değildir; `usesCleartextTraffic`
+         aşağıda `false` olsa da bu bayrak yalnızca platformun ağ güvenliği
+         yapılandırmasına uyan istekleri (HttpsURLConnection/okhttp vb.)
+         kapsar, çiğ `java.net.Socket` kullanımını etkilemez — bu yine de
+         şifrelenmemiş bir bağlantıdır (bkz. core-transport modül notu,
+         G023-G024 TLS henüz eklenmedi). -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
         android:allowBackup="false"
         android:label="GAMLETSOL"

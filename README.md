@@ -92,6 +92,49 @@ bindirmesi hiç test edilmedi** — bu tam olarak G002/G003'ün kanıtlamaya
 çalıştığı şey. Kullanıcının bu APK'yı kendi TV'sine kurup sonucu
 `docs/compatibility/hardware.md` dosyasına işlemesi gerekiyor.
 
+### `core-transport` + TV↔telefon bağlantısı — P3/G022-G030'un ilk sürümü (2026-11-09)
+
+Kullanıcı netleştirmesi: asıl istenen özellik, telefonu kamerayla altyazı
+okumakla sınırlı değil — **telefon ile TV arasında bağlantı kurup çeviriyi
+TV ekranına yansıtmak**. Bu, yol haritasının P3 fazıdır (G022-G030); bu
+güncellemeden önce bu faz için **sıfır kod** vardı. Şimdi eklenen ilk/MVP
+sürümü:
+
+- **`core-transport`** (saf Kotlin/JVM, `core-model`/`core-pipeline` gibi
+  Android SDK gerektirmez): `CueEvent` (tek bir altyazı/çeviri olayı) +
+  `CueEventCodec` (Base64 tabanlı, bağımlılıksız, satır bazlı kodlama) +
+  `TvEventServer` (TV tarafı TCP sunucusu) + `TvEventClient` (telefon tarafı
+  TCP istemcisi).
+- **`app-tv`**: artık açılışta bir `TvEventServer` başlatır, ekranında
+  bağlanılacak IP:port'u gösterir ve telefondan gelen gerçek `CueEvent`'leri
+  (G001-G003 kanıtındaki sabit test yazısı yerine) overlay'de gösterir.
+- **`app-mobile`**: üst menüye "TV'ye Yansıt" öğesi eklendi
+  (`TvConnectDialog`) — kullanıcı TV'nin IP/port'unu elle girer,
+  `CaptionViewModel.connectToTv()` bağlanır; bağlandıktan sonra pipeline'ın
+  ürettiği her cue, mevcut telefon-ekranı sink'ine ek olarak yeni
+  `TvRelaySubtitleSink` üzerinden TV'ye de gönderilir.
+
+**Gerçekten doğrulanan:** `core-transport`'un TCP davranışı — satır bazlı
+okuma, Base64 kodlama, bağlantı kapatma — bu kum havuzunda **gerçek
+127.0.0.1 loopback soketleri üzerinden** 7 birim testiyle doğrulandı
+(`TvEventServerClientTest`, `CueEventCodecTest`; mock değil, gerçek
+`ServerSocket`/`Socket`).
+
+**Doğrulanmadı / bilinçli MVP sınırları (dürüstlük ilkesi):**
+- **Şifreleme/kimlik doğrulama YOK** — düz TCP metin protokolü. G023-G024'teki
+  TLS + eşleştirme token'ı henüz eklenmedi; yalnızca ev içi/güvenilir bir
+  Wi-Fi ağında kullanılmalı.
+- **QR eşleştirme / NSD (otomatik TV keşfi) YOK** — kullanıcı IP/port'u elle
+  girer.
+- Gerçek bir telefon ile gerçek bir TV arasında, gerçek bir Wi-Fi ağında
+  **hiç denenmedi** (NAT/güvenlik duvarı, Wi-Fi gecikmesi, bağlantı kopması
+  gibi gerçek dünya koşulları test edilmedi).
+- Bu özellik, hâlâ doğrulanmamış G001-G003 (HDMI passthrough üstüne yazı
+  bindirme) sonucundan **bağımsız** olarak inşa edildi — ikisi birbirini
+  gerektirmez (TV overlay yerine TV'nin kendi uygulama ekranında metin
+  göstermek yeterli), ama tam "oyun görüntüsü + çeviri aynı TV ekranında"
+  vaadi için G001-G003'ün de ayrıca doğrulanması gerekiyor.
+
 ## Mimari pivotu (2026-11-09, ilk belge)
 
 Bu depo başlangıçta mikrofonla TV/konsol sesini dinleyip buluta gönderen bir
@@ -131,6 +174,8 @@ gamletsol/
 │                      # TvInputSummary/selectPreferredHdmiPassthroughInput...
 ├─ core-pipeline/      # Saf Kotlin — FrameSource/TextRecognizer/Translator/
 │                      # SubtitleSink/SpeechOutput arayüzleri + CaptionPipeline
+├─ core-transport/     # Saf Kotlin — CueEvent/CueEventCodec + TvEventServer/
+│                      # TvEventClient (telefon↔TV TCP taşıma, P3/G022-G030 MVP)
 ├─ feature-capture/    # Android kütüphanesi — CameraX tabanlı CameraSource
 └─ legacy-flutter-mic-stt/  # DONDURULMUŞ eski Flutter/mikrofon+ASR MVP'si
 ```
@@ -143,12 +188,14 @@ Studio, CI'da GitHub'ın hazır SDK'lı ubuntu-latest imajı) derlenebilirler.
 
 Henüz eklenmeyen modüller (ilgili karar kapısı onaylandığında veya ihtiyaç
 ortaya çıktığında eklenecek) — isimler güncel yol haritasının (`docs/roadmap/`)
-önerdiği adlarla hizalandı: `core-transport` (TLS+QR eşleştirme,
-P3/G023-G024), `data-local` (Room/DataStore — kalıcı ayar/sözlük/
-trusted-devices, P2-P3), `feature-session`/`feature-tv-connect` (TV
-eşleştirme/QR, P3), `receiver-tizen`, `receiver-web`, `source-playstation`,
-`source-xbox` (X1-X4, koşullu), `backend/*` (P6-P7). `app-tv` artık
-eklendi (yukarıya bakın, G001-G006 kanıtı için).
+önerdiği adlarla hizalandı: `data-local` (Room/DataStore — kalıcı ayar/sözlük/
+trusted-devices, P2-P3), `feature-session`/`feature-tv-connect` (QR ile
+eşleştirme arayüzü, G023-G024'ün TLS/token kısmı, P3), `receiver-tizen`,
+`receiver-web`, `source-playstation`, `source-xbox` (X1-X4, koşullu),
+`backend/*` (P6-P7). `app-tv` ve `core-transport` artık eklendi (yukarıya
+bakın) — `core-transport` G022/G025'in şifresiz/eşleştirmesiz MVP'sidir,
+tam G022-G030 için hâlâ `feature-tv-connect` (QR) ve TLS/token katmanı
+gerekiyor.
 
 ## İlk sürümün yaptığı (ve yapmadığı)
 
@@ -168,17 +215,22 @@ ilkesi):**
   sürüm tam kareyi OCR'a verip bölgeye göre metin bloklarını filtreliyor
   (daha basit, daha pahalı; bkz. `MlKitTextRecognizer` yorumları).
 - Kare-öncesi değişim algılama (OCR'ı her karede çalıştırmamak) — P2.
-- TV'ye yansıtma, konsol bağlantısı, Akıllı Ekran, dublaj paketleri — bkz.
-  yol haritası P3-P6.
+- Konsol bağlantısı, Akıllı Ekran, dublaj paketleri — bkz. yol haritası
+  P3-P6. (TV'ye yansıtmanın İLK/MVP sürümü artık var — bkz. yukarıdaki
+  `core-transport` bölümü — ama şifreleme/eşleştirme/gerçek donanım testi
+  hâlâ yok.)
 - Kalıcı ayarlar/oyun profilleri (`data-local`/Room).
 
 ## Doğrulama durumu (dürüstlük ilkesi)
 
-- [x] `core-model` ve `core-pipeline`: bu kum havuzunda **gerçekten
-      derlendi ve test edildi** (`./gradlew :core-model:test
-      :core-pipeline:test` — 13 birim testi (2 Cue + 7 CaptionPipeline + 4
-      TvInputSelection), hepsi geçti; JDK 21 ile, CI'da JDK 17 ile de
-      **gerçekten tekrar doğrulandı**, aşağıya bakın).
+- [x] `core-model`, `core-pipeline`, `core-transport`: bu kum havuzunda
+      **gerçekten derlendi ve test edildi** (`./gradlew :core-model:test
+      :core-pipeline:test :core-transport:test` — 20 birim testi (2 Cue + 7
+      CaptionPipeline + 4 TvInputSelection + 3 CueEventCodec + 4
+      TvEventServer/Client, hepsi geçti; `core-transport`'un 4 testi gerçek
+      127.0.0.1 loopback TCP soketleri üzerinden çalışır, mock değil);
+      JDK 21 ile, CI'da JDK 17 ile de **gerçekten tekrar doğrulandı**,
+      aşağıya bakın).
 - [x] `feature-capture`, `app-mobile`, `app-tv`: **artık GERÇEK CI'da
       derlendi** (`.github/workflows/android.yml`,
       [run #42567524803](https://github.com/FEDERALTURK/gamletsol/actions/runs/42567524803) —
@@ -207,11 +259,16 @@ ilkesi):**
       çalıştırılmadı**. Bu kapı geçilmeden TV üstü çeviri özelliği
       "çalışıyor" sayılmaz; sonuçlar `docs/compatibility/hardware.md`'ye
       işlenecek.
+- [ ] Telefon↔TV bağlantısı (P3/G022-G030, `core-transport` + "TV'ye
+      Yansıt" menüsü): kod yazıldı ve gerçek loopback soket testleriyle
+      doğrulandı, ama **gerçek bir telefon ile gerçek bir TV arasında,
+      gerçek bir Wi-Fi ağında hiç denenmedi**. Şifreleme/eşleştirme
+      doğrulaması da yok — bkz. yukarıdaki `core-transport` bölümü.
 
 ## Geliştirme
 
 ```bash
-./gradlew :core-model:test :core-pipeline:test   # platformdan bağımsız birim testleri
+./gradlew :core-model:test :core-pipeline:test :core-transport:test  # platformdan bağımsız birim testleri
 ./gradlew :app-mobile:assembleDebug              # telefon debug APK (Android SDK gerektirir)
 ./gradlew :app-tv:assembleDebug                  # TV probe debug APK (Android SDK gerektirir)
 ```

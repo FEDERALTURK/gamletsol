@@ -22,7 +22,9 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -39,6 +41,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import com.federalturk.gamletsol.CaptionViewModel
 import com.federalturk.gamletsol.PipelineStatus
+import com.federalturk.gamletsol.TvConnectionState
 import androidx.camera.view.PreviewView
 
 /**
@@ -52,6 +55,11 @@ import androidx.camera.view.PreviewView
  * - Ana ekrandaki tek "bilgi" düğmesi, birden çok öğeli gerçek bir
  *   AÇILIR MENÜYE (overflow) dönüştürüldü: Kurulum Talimatları, Gizlilik,
  *   Tanıtımı Yeniden Göster.
+ *
+ * NOT (2026-11-09, kullanıcı netleştirmesi): Kullanıcının asıl istediği
+ * özellik telefon↔TV bağlantısı kurup çeviriyi TV'ye yansıtmaktı — bu
+ * yüzden menüye bir "TV'ye Yansıt" öğesi eklendi (bkz. [TvConnectDialog]),
+ * P3/G022-G030'un ilk/MVP sürümü (core-transport modülü).
  */
 @Composable
 fun CaptionScreen(
@@ -62,6 +70,7 @@ fun CaptionScreen(
     val granted by viewModel.cameraPermissionGranted.collectAsState()
     val cue by viewModel.subtitleSink.activeCue.collectAsState()
     val status by viewModel.pipelineStatus.collectAsState()
+    val tvConnectionState by viewModel.tvConnectionState.collectAsState()
 
     Box(modifier = Modifier.fillMaxSize()) {
         if (granted) {
@@ -70,7 +79,12 @@ fun CaptionScreen(
             PermissionRequestContent(onRequestCameraPermission = onRequestCameraPermission)
         }
 
-        TopBar(onShowOnboardingAgain = onShowOnboardingAgain)
+        TopBar(
+            onShowOnboardingAgain = onShowOnboardingAgain,
+            tvConnectionState = tvConnectionState,
+            onConnectToTv = viewModel::connectToTv,
+            onDisconnectFromTv = viewModel::disconnectFromTv,
+        )
 
         val translated = cue?.translatedText
         if (granted && !translated.isNullOrBlank()) {
@@ -82,7 +96,12 @@ fun CaptionScreen(
 }
 
 @Composable
-private fun BoxScope.TopBar(onShowOnboardingAgain: () -> Unit) {
+private fun BoxScope.TopBar(
+    onShowOnboardingAgain: () -> Unit,
+    tvConnectionState: TvConnectionState,
+    onConnectToTv: (String, Int) -> Unit,
+    onDisconnectFromTv: () -> Unit,
+) {
     var menuExpanded by remember { mutableStateOf(false) }
     var dialog by remember { mutableStateOf<MenuDialog?>(null) }
 
@@ -105,6 +124,21 @@ private fun BoxScope.TopBar(onShowOnboardingAgain: () -> Unit) {
                 Icon(Icons.Filled.MoreVert, contentDescription = "Menü", tint = Color.White)
             }
             DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            if (tvConnectionState == TvConnectionState.CONNECTED) {
+                                "TV bağlantısı (bağlı ✓)"
+                            } else {
+                                "TV'ye Yansıt"
+                            },
+                        )
+                    },
+                    onClick = {
+                        menuExpanded = false
+                        dialog = MenuDialog.TV_CONNECT
+                    },
+                )
                 DropdownMenuItem(
                     text = { Text("Kurulum talimatları") },
                     onClick = {
@@ -138,6 +172,12 @@ private fun BoxScope.TopBar(onShowOnboardingAgain: () -> Unit) {
     }
 
     when (dialog) {
+        MenuDialog.TV_CONNECT -> TvConnectDialog(
+            connectionState = tvConnectionState,
+            onConnect = onConnectToTv,
+            onDisconnect = onDisconnectFromTv,
+            onDismiss = { dialog = null },
+        )
         MenuDialog.SETUP -> InfoDialog(
             title = "Kurulum talimatları",
             body = "1. Oyun/cihaz ayarlarından altyazıları (Subtitles/Captions) " +
@@ -169,7 +209,79 @@ private fun BoxScope.TopBar(onShowOnboardingAgain: () -> Unit) {
     }
 }
 
-private enum class MenuDialog { SETUP, PRIVACY, ABOUT }
+private enum class MenuDialog { TV_CONNECT, SETUP, PRIVACY, ABOUT }
+
+/**
+ * "TV'ye Yansıt" diyaloğu — kullanıcının app-tv ekranında gördüğü IP:port'u
+ * elle girip bağlanmasını sağlar (bkz. roadmap P3, MVP: NSD/otomatik keşif
+ * ve QR eşleştirme HENÜZ yok). Bağlı olduğunda bağlantıyı kesme seçeneği
+ * de burada gösterilir.
+ */
+@Composable
+private fun TvConnectDialog(
+    connectionState: TvConnectionState,
+    onConnect: (String, Int) -> Unit,
+    onDisconnect: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var host by remember { mutableStateOf("") }
+    var portText by remember { mutableStateOf("48631") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("TV'ye Yansıt (beta)") },
+        text = {
+            Column {
+                Text(
+                    "TV uygulamasının (app-tv) ekranında gösterilen IP adresini " +
+                        "ve port'u girin. Telefon ve TV AYNI Wi-Fi ağında olmalı.\n\n" +
+                        "NOT: Bu bağlantı şifrelenmemiştir (beta) — yalnızca ev " +
+                        "içi/güvendiğiniz bir ağda kullanın.",
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = host,
+                    onValueChange = { host = it },
+                    label = { Text("TV IP adresi (ör. 192.168.1.23)") },
+                    enabled = connectionState != TvConnectionState.CONNECTING,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = portText,
+                    onValueChange = { portText = it },
+                    label = { Text("Port") },
+                    enabled = connectionState != TvConnectionState.CONNECTING,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                val statusText = when (connectionState) {
+                    TvConnectionState.DISCONNECTED -> "Bağlı değil."
+                    TvConnectionState.CONNECTING -> "Bağlanılıyor…"
+                    TvConnectionState.CONNECTED -> "Bağlandı ✓ — çeviriler artık TV'ye de gönderiliyor."
+                    TvConnectionState.FAILED -> "Bağlanılamadı — IP/port'u ve aynı ağda olduğunuzu kontrol edin."
+                }
+                Text(statusText)
+            }
+        },
+        confirmButton = {
+            if (connectionState == TvConnectionState.CONNECTED) {
+                Button(onClick = { onDisconnect() }) { Text("Bağlantıyı kes") }
+            } else {
+                Button(
+                    onClick = {
+                        val port = portText.toIntOrNull()
+                        if (host.isNotBlank() && port != null) {
+                            onConnect(host.trim(), port)
+                        }
+                    },
+                    enabled = connectionState != TvConnectionState.CONNECTING,
+                ) { Text("Bağlan") }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Kapat") }
+        },
+    )
+}
 
 @Composable
 private fun BoxScope.StatusChip(status: PipelineStatus) {

@@ -14,6 +14,13 @@
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- P3/G022-G030 (telefon↔TV cue taşıma, core-transport): bu uygulama
+         yerel ağda bir TCP sunucusu açıp telefondan gelen altyazı/çeviri
+         olaylarını dinler. İnternete çıkmaz, yalnızca aynı yerel ağdaki
+         telefonla konuşur — ama Android, soket açmak için her durumda
+         INTERNET iznini ister. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <uses-feature
         android:name="android.software.leanback"
         android:required="false" />

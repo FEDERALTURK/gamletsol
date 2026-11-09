@@ -26,25 +26,34 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.runtime.DisposableEffect
 import com.federalturk.gamletsol.core.model.tv.TvInputSummary
 import com.federalturk.gamletsol.core.model.tv.selectPreferredHdmiPassthroughInput
+import com.federalturk.gamletsol.core.transport.CueEvent
+import com.federalturk.gamletsol.core.transport.TvEventServer
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 /**
- * G001-G003 kanıt ekranı — bu uygulamanın TEK amacı budur:
+ * G001-G003 kanıt ekranı + P3/G022-G030'un ilk sürümü (telefondan gelen
+ * cue'ları gösterme). Bu uygulamanın yaptıkları:
  *
  * 1. Cihazdaki TV girişlerini listele (`TvInputBridge`, G002).
  * 2. Bulunan ilk HDMI passthrough girişine (varsa) `TvView` ile tune ol.
- * 3. Üstüne sabit, saati gösteren bir Türkçe test yazısı bindir (G003) —
- *    saat canlı güncellendiği için yazının "donmuş bir ekran görüntüsü"
- *    olmadığı, gerçekten üst üste render edildiği anlaşılır.
+ * 3. Üstüne, G001-G003 testi için sabit+canlı-saatli bir Türkçe test yazısı
+ *    bindir — saat canlı güncellendiği için yazının "donmuş bir ekran
+ *    görüntüsü" olmadığı, gerçekten üst üste render edildiği anlaşılır.
+ * 4. Bir `TvEventServer` (core-transport) başlat ve telefondan gelen
+ *    gerçek [CueEvent]'leri aynı overlay alanında göster — kullanıcının
+ *    telefonda gireceği IP/port, ekranda gösterilir.
  *
- * Bu ekranın "çalıştığını" iddia etmiyoruz — kullanıcının gerçek
- * Profilo TV + Xbox donanımında deneyip `docs/compatibility/hardware.md`
- * G002/G003 bölümlerini doldurması gerekiyor.
+ * NOT (dürüstlük ilkesi): #1-3 gerçek Profilo TV + Xbox donanımında HENÜZ
+ * denenmedi (bkz. docs/compatibility/hardware.md). #4'teki TCP sunucusu
+ * gerçek loopback soket testleriyle doğrulandı (core-transport modülü)
+ * ama gerçek bir telefon ile gerçek bir TV arasında, gerçek bir Wi-Fi
+ * ağında HENÜZ denenmedi — ve şifreleme/eşleştirme doğrulaması YOK.
  */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -67,6 +76,18 @@ private fun TvProbeScreen() {
     var tuneStatus by remember { mutableStateOf(TuneStatus.IDLE) }
     var tuner by remember { mutableStateOf<PassthroughTuner?>(null) }
     var nowText by remember { mutableStateOf("") }
+    var receivedCue by remember { mutableStateOf<CueEvent?>(null) }
+    var serverPort by remember { mutableStateOf<Int?>(null) }
+    val localIp = remember { LocalIpAddress.find() }
+
+    // P3/G022-G030 (MVP): telefondan gelen cue'ları dinleyen TCP sunucusu.
+    // Activity canlı olduğu sürece çalışır, DisposableEffect ile kapatılır.
+    DisposableEffect(Unit) {
+        val server = TvEventServer { cue -> receivedCue = cue }
+        server.start()
+        serverPort = server.boundPort
+        onDispose { server.stop() }
+    }
 
     // Saat her saniye güncellenir — overlay'in canlı render edildiğini,
     // dondurulmuş bir ekran görüntüsü olmadığını kanıtlamak için.
@@ -111,11 +132,25 @@ private fun TvProbeScreen() {
                 .background(Color(0x99000000))
                 .padding(24.dp),
         ) {
-            Text(
-                text = stringResource(R.string.tv_test_overlay_text),
-                color = Color.White,
-            )
+            val liveCue = receivedCue
+            if (liveCue != null) {
+                // Telefondan gerçek bir cue geldiyse, sabit test yazısı
+                // yerine onu göster — gerçek P3 davranışı.
+                Text(text = liveCue.translatedText, color = Color.White)
+                if (liveCue.originalText.isNotBlank()) {
+                    Text(text = liveCue.originalText, color = Color.White.copy(alpha = 0.7f))
+                }
+            } else {
+                Text(
+                    text = stringResource(R.string.tv_test_overlay_text),
+                    color = Color.White,
+                )
+            }
             Text(text = "Canlı saat (donmuş değil): $nowText", color = Color(0xFFFF6D10))
+            Text(
+                text = "Telefondan bağlan: ${localIp ?: "IP bulunamadı"}:${serverPort ?: "…"}",
+                color = Color(0xFF4DD0E1),
+            )
             Text(
                 text = "Durum: ${tuneStatus.name} · Giriş: ${selectedInput?.inputId ?: "bulunamadı"}",
                 color = Color.White,
