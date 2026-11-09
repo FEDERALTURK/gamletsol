@@ -77,7 +77,7 @@ class TvEventServerClientTest {
     }
 
     @Test
-    fun `send after server stop returns false instead of throwing`() {
+    fun `send after server stop eventually returns false instead of throwing`() {
         val s = TvEventServer(port = 0) { }
         server = s
         s.start()
@@ -86,8 +86,24 @@ class TvEventServerClientTest {
         assertTrue(c != null)
 
         s.stop()
-        // Soket tarafın kapandığını fark edene kadar bir-iki gönderim gerekebilir.
-        val result = (1..5).map { c!!.send(CueEvent("x", "y", 0L)) }
-        assertTrue("at least one send after server stop should eventually fail", result.any { !it })
+
+        // DÜZELTME (gerçek CI çalıştırmasında bulunan flaky test): soketin
+        // kapandığını (RST/FIN) işletim sisteminin fark etmesi anlık
+        // değildir — bu kum havuzunda rastlantıyla hemen oluyordu ama
+        // CI'nın daha hızlı/yoğun makinesinde art arda 5 hızlı gönderim
+        // arasında süre tanımadığı için hep "başarılı" dönüyordu (gerçek
+        // CI run'larında 2 kez AssertionError ile doğrulandı). Artık
+        // denemeler arasına gerçek bir bekleme süresi konuyor ve en fazla
+        // 2 saniye boyunca deneniyor.
+        var sawFailure = false
+        val deadline = System.currentTimeMillis() + 2_000
+        while (System.currentTimeMillis() < deadline) {
+            if (!c!!.send(CueEvent("x", "y", 0L))) {
+                sawFailure = true
+                break
+            }
+            Thread.sleep(50)
+        }
+        assertTrue("a send after server stop should eventually fail within 2s", sawFailure)
     }
 }
