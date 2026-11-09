@@ -18,6 +18,12 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # "latest" GitHub Release'ine APK yüklemek için gereken izin (bkz.
+    # aşağıdaki "Debug APK'ları yükle" adımı) — varsayılan GITHUB_TOKEN
+    # izinleri bazı repo ayarlarında salt-okunur olabilir, bu yüzden
+    # burada açıkça `contents: write` istiyoruz.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v5
 
@@ -71,3 +77,33 @@ jobs:
             feature-capture/build/reports/lint-results-debug.html
             app-mobile/build/reports/lint-results-debug.html
             app-tv/build/reports/lint-results-debug.html
+
+      # NOT (dürüstlük ilkesi, 2026-11-09 — kullanım kılavuzu için eklendi):
+      # CI'nın `actions/upload-artifact` çıktıları 90 gün sonra OTOMATİK
+      # SİLİNİR ve yalnızca bu depoya push erişimi olanlarca indirilebilir
+      # — bu, `docs/KULLANIM-KILAVUZU.md`'yi okuyan herkese KALICI bir
+      # indirme bağlantısı vermez. Bu adım, yalnızca `main`'e push'ta
+      # (pull request'lerde DEĞİL), bu iki debug APK'yı her zaman AYNI
+      # "latest" GitHub Release'ine yükleyip ÖNCEKİ APK'ların üzerine
+      # yazar — böylece kılavuzdaki indirme bağlantısı hep GÜNCEL ve hep
+      # AYNI kalır. Bu hâlâ bir DEBUG APK'dır (imzasız/debug-signed,
+      # mağaza yayını DEĞİL) — bkz. kılavuzdaki "Bilinen sınırlar" bölümü.
+      - name: "Debug APK'ları 'latest' GitHub Release'ine yükle (yalnızca main push)"
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "GAMLETSOL — en güncel debug APK'lar"
+          body: |
+            Bu sürüm, `main` dalındaki en güncel commit'ten (${{ github.sha }})
+            otomatik olarak üretilen DEBUG APK'ları içerir — imzasız/debug-
+            signed derlemelerdir, mağaza yayını değildir. Kurulum adımları
+            için `docs/KULLANIM-KILAVUZU.md`'ye bakın.
+
+            Bu sürüm her `main` push'unda GÜNCELLENİR (önceki APK'ların
+            üzerine yazılır) — kalıcı bir sürüm arşivi DEĞİLDİR.
+          files: |
+            app-mobile/build/outputs/apk/debug/app-mobile-debug.apk
+            app-tv/build/outputs/apk/debug/app-tv-debug.apk
+          prerelease: true
+          make_latest: true
