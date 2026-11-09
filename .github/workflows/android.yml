@@ -28,13 +28,15 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      # GitHub'ın ubuntu-latest imajında Android SDK önceden kurulu gelir
-      # (ANDROID_HOME ayarlı); yalnızca derlemenin ihtiyaç duyduğu platform/
-      # build-tools paketlerini garantiye alıyoruz.
+      # DÜZELTME (ilk sürümdeki hata): ubuntu-latest imajında `sdkmanager`
+      # PATH'te DEĞİL (gerçek CI çalıştırmasında "command not found" / exit
+      # code 127 ile doğrulandı — bkz. git geçmişi). `android-actions/
+      # setup-android@v3`, ANDROID_HOME/ANDROID_SDK_ROOT'u kurup
+      # cmdline-tools'u PATH'e ekliyor ve lisansları kabul ediyor.
+      - uses: android-actions/setup-android@v3
+
       - name: Ensure required Android SDK packages
-        run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0" >/dev/null
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" >/dev/null
 
       - name: Unit tests (core-model, core-pipeline)
         run: ./gradlew :core-model:test :core-pipeline:test --stacktrace
