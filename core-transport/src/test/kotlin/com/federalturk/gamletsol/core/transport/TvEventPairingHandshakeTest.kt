@@ -35,6 +35,7 @@ class TvEventPairingHandshakeTest {
         val received = LinkedBlockingQueue<CueEvent>()
         val s = TvEventServer(
             port = 0,
+            tlsIdentity = TvTlsIdentity.generate(),
             validatePairingCode = { code -> registry.validateAndConsume(code) == PairingResult.VALID },
         ) { received.offer(it) }
         server = s
@@ -57,6 +58,7 @@ class TvEventPairingHandshakeTest {
         val received = LinkedBlockingQueue<CueEvent>()
         val s = TvEventServer(
             port = 0,
+            tlsIdentity = TvTlsIdentity.generate(),
             validatePairingCode = { code -> registry.validateAndConsume(code) == PairingResult.VALID },
         ) { received.offer(it) }
         server = s
@@ -76,6 +78,7 @@ class TvEventPairingHandshakeTest {
 
         val s = TvEventServer(
             port = 0,
+            tlsIdentity = TvTlsIdentity.generate(),
             validatePairingCode = { code -> registry.validateAndConsume(code) == PairingResult.VALID },
         ) { }
         server = s
@@ -98,6 +101,7 @@ class TvEventPairingHandshakeTest {
 
         val s = TvEventServer(
             port = 0,
+            tlsIdentity = TvTlsIdentity.generate(),
             validatePairingCode = { code -> registry.validateAndConsume(code) == PairingResult.VALID },
         ) { }
         server = s
@@ -129,6 +133,7 @@ class TvEventPairingHandshakeTest {
 
         val s = TvEventServer(
             port = 0,
+            tlsIdentity = TvTlsIdentity.generate(),
             validatePairingCode = { code -> registry.validateAndConsume(code) == PairingResult.VALID },
         ) { }
         server = s
@@ -142,5 +147,86 @@ class TvEventPairingHandshakeTest {
             TvCapabilities.CURRENT,
             c!!.capabilities,
         )
+    }
+
+    // --- G024: TLS + fingerprint pinleme ---
+
+    @Test
+    fun `connecting with the TV's real fingerprint succeeds (true pinning)`() {
+        val registry = PairingRegistry()
+        val token = registry.issue()
+        val tlsIdentity = TvTlsIdentity.generate()
+
+        val s = TvEventServer(
+            port = 0,
+            tlsIdentity = tlsIdentity,
+            validatePairingCode = { code -> registry.validateAndConsume(code) == PairingResult.VALID },
+        ) { }
+        server = s
+        s.start()
+
+        val c = TvEventClient.connect(
+            "127.0.0.1",
+            s.boundPort,
+            pairingCode = token.value,
+            expectedFingerprintSha256 = tlsIdentity.fingerprintSha256Hex,
+        )
+        client = c
+        assertTrue("connecting with the TV's REAL fingerprint must succeed", c != null)
+    }
+
+    @Test
+    fun `connecting with the wrong fingerprint is rejected even with a correct pairing code (MITM protection)`() {
+        val registry = PairingRegistry()
+        val token = registry.issue()
+        val realTlsIdentity = TvTlsIdentity.generate()
+        val someOtherTlsIdentity = TvTlsIdentity.generate() // "saldırganın" sertifikasını simüle eder
+
+        val s = TvEventServer(
+            port = 0,
+            tlsIdentity = realTlsIdentity,
+            validatePairingCode = { code -> registry.validateAndConsume(code) == PairingResult.VALID },
+        ) { }
+        server = s
+        s.start()
+
+        // Doğru eşleştirme kodu verilse DAHİ, fingerprint yanlışsa (ör. QR
+        // başka bir TV'den/bir MITM'den geldiyse) bağlantı reddedilmelidir —
+        // bu, G024'ün asıl amacıdır: eşleştirme kodu KİMLİK doğrulamaz,
+        // TLS fingerprint pinning doğrular.
+        val c = TvEventClient.connect(
+            "127.0.0.1",
+            s.boundPort,
+            pairingCode = token.value,
+            expectedFingerprintSha256 = someOtherTlsIdentity.fingerprintSha256Hex,
+        )
+        client = c
+        assertNull("a fingerprint mismatch must reject the connection even with the right pairing code", c)
+    }
+
+    @Test
+    fun `connecting without a fingerprint (manual entry path) still succeeds over an encrypted channel`() {
+        val registry = PairingRegistry()
+        val token = registry.issue()
+
+        val received = LinkedBlockingQueue<CueEvent>()
+        val s = TvEventServer(
+            port = 0,
+            tlsIdentity = TvTlsIdentity.generate(),
+            validatePairingCode = { code -> registry.validateAndConsume(code) == PairingResult.VALID },
+        ) { received.offer(it) }
+        server = s
+        s.start()
+
+        // expectedFingerprintSha256 verilmiyor — manuel giriş yolunu simüle
+        // eder (kullanıcı 64 karakterlik bir hash'i elle yazamaz). Bağlantı
+        // hâlâ TLS üzerindendir (şifreli) ama TV'nin kimliği PİNLENMEZ.
+        val c = TvEventClient.connect("127.0.0.1", s.boundPort, pairingCode = token.value)
+        client = c
+        assertTrue("manual entry (no fingerprint) must still work over the now-mandatory TLS channel", c != null)
+
+        val event = CueEvent("hello", "merhaba", 0L)
+        assertTrue(c!!.send(event))
+        assertEquals(event, received.poll(2, TimeUnit.SECONDS))
     }
 }

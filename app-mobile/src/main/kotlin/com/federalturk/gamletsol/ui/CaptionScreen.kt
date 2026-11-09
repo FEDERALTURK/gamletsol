@@ -86,7 +86,11 @@ fun CaptionScreen(
             QrScannerScreen(
                 onResult = { payload ->
                     scanningQr = false
-                    viewModel.connectToTv(payload.host, payload.port, payload.code)
+                    // G024: QR, TV'nin TLS fingerprint'ini de taşır — bu yolla
+                    // bağlanan istemci gerçek MITM korumalı pinning kullanır
+                    // (manuel giriş yolundan farklı olarak, bkz. aşağıdaki
+                    // onConnectToTv sarmalayıcısı).
+                    viewModel.connectToTv(payload.host, payload.port, payload.code, payload.fingerprintSha256)
                 },
                 onCancel = { scanningQr = false },
             )
@@ -101,7 +105,11 @@ fun CaptionScreen(
                 onShowOnboardingAgain = onShowOnboardingAgain,
                 tvConnectionState = tvConnectionState,
                 cameraPermissionGranted = granted,
-                onConnectToTv = viewModel::connectToTv,
+                // G024: manuel giriş yolu — 64 karakterlik fingerprint'i elle
+                // yazmak pratik değil, bu yüzden burada bilerek `null` geçilir
+                // (bağlantı yine TLS ile şifrelidir ama TV'nin kimliği
+                // pinlenmez, bkz. TvEventClient.connect dokümantasyonu).
+                onConnectToTv = { host, port, code -> viewModel.connectToTv(host, port, code, fingerprintSha256 = null) },
                 onDisconnectFromTv = viewModel::disconnectFromTv,
                 onStartQrScan = { scanningQr = true },
             )

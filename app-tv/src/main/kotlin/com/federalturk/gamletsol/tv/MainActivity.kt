@@ -37,6 +37,7 @@ import com.federalturk.gamletsol.core.pairing.PairingToken
 import com.federalturk.gamletsol.core.pairing.QrMatrixEncoder
 import com.federalturk.gamletsol.core.transport.CueEvent
 import com.federalturk.gamletsol.core.transport.TvEventServer
+import com.federalturk.gamletsol.core.transport.TvTlsIdentity
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -106,12 +107,19 @@ private fun TvProbeScreen() {
     val pairingRegistry = remember { PairingRegistry() }
     var currentToken by remember { mutableStateOf<PairingToken?>(null) }
 
+    // G024: TLS kimliği — uygulama bu ekran canlı olduğu sürece SABİTTİR
+    // (yeniden başlatılana kadar aynı sertifika/fingerprint kullanılır).
+    // NOT (dürüstlük ilkesi/MVP sınırı): KALICI DEĞİL — bkz. TvTlsIdentity
+    // dokümantasyonu, G029 ("bu TV'yi hatırla") henüz bunu beklemiyor.
+    val tlsIdentity = remember { TvTlsIdentity.generate() }
+
     // P3/G022-G030 (MVP): telefondan gelen cue'ları dinleyen TCP sunucusu +
-    // G023'teki eşleştirme kodu doğrulaması. Activity canlı olduğu sürece
-    // çalışır, DisposableEffect ile kapatılır.
+    // G023'teki eşleştirme kodu doğrulaması + G024'teki TLS. Activity canlı
+    // olduğu sürece çalışır, DisposableEffect ile kapatılır.
     DisposableEffect(Unit) {
         currentToken = pairingRegistry.issue()
         val server = TvEventServer(
+            tlsIdentity = tlsIdentity,
             validatePairingCode = { code -> pairingRegistry.validateAndConsume(code) == PairingResult.VALID },
         ) { cue -> receivedCue = cue }
         server.start()
@@ -204,7 +212,12 @@ private fun TvProbeScreen() {
                         // zaten yukarıda görünür durumda, kullanıcı elle
                         // girebilir (dürüstlük ilkesi: sahte/boş bir QR
                         // göstermek yerine hiç göstermemek).
-                        val payload = PairingQrPayload(host = ip, port = port, code = token.value)
+                        val payload = PairingQrPayload(
+                            host = ip,
+                            port = port,
+                            code = token.value,
+                            fingerprintSha256 = tlsIdentity.fingerprintSha256Hex,
+                        )
                         val matrix = runCatching { QrMatrixEncoder.encode(payload.encode()) }.getOrNull()
                         if (matrix != null) {
                             QrCodeView(matrix = matrix, modifier = Modifier.size(160.dp))

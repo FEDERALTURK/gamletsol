@@ -9,6 +9,7 @@ import java.net.Socket
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import javax.net.ssl.SSLContext
 
 private fun Socket.closeForcibly() {
     runCatching { setSoLinger(true, 0) }
@@ -38,13 +39,29 @@ private fun Socket.closeForcibly() {
  * bozuksa bağlantı HİÇBİR [CueEvent] işlenmeden kapatılır. `null` geçilirse
  * (varsayılan — geriye dönük uyumluluk için) eşleştirme kontrolü YAPILMAZ ve
  * hiçbir yanıt satırı gönderilmez.
+ *
+ * [tlsIdentity] (yol haritası G024, 2026-11-09): ZORUNLUDUR — bu sunucu
+ * ARTIK HER ZAMAN TLS üzerinden dinler (düz TCP YOK). `accept()` edilen her
+ * soket aslında bir `SSLSocket`'tir; TLS el sıkışması, o soketin akışları
+ * ilk kullanıldığında (handshake/CAPS okuma/yazma) ÖRTÜK olarak gerçekleşir.
+ * Sunucu, istemcinin sertifikasını/kimliğini DOĞRULAMAZ (yalnızca kendi
+ * kimliğini sunar) — istemci tarafındaki fingerprint pinning ([TvEventClient]
+ * dokümantasyonuna bakın) GÜVENLİĞİN asıl kaynağıdır.
  */
 class TvEventServer(
     port: Int = DEFAULT_PORT,
+    private val tlsIdentity: TvTlsIdentity,
     private val validatePairingCode: ((String) -> Boolean)? = null,
     private val onCueReceived: (CueEvent) -> Unit,
 ) {
-    private val serverSocket = ServerSocket(port)
+    private val serverSocket: ServerSocket = run {
+        val sslContext = SSLContext.getInstance("TLS")
+        // trustManagers = null → istemci sertifikası İSTENMİYOR/doğrulanmıyor
+        // (bkz. sınıf dokümantasyonu) — yalnızca sunucunun kendi kimliği
+        // (keyManagers) sunuluyor.
+        sslContext.init(tlsIdentity.keyManagers, null, null)
+        sslContext.serverSocketFactory.createServerSocket(port)
+    }
     private val running = AtomicBoolean(false)
     private val executor = Executors.newCachedThreadPool()
 

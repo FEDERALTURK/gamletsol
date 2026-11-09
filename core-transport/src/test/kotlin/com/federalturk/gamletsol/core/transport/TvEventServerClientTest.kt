@@ -9,13 +9,17 @@ import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 
 /**
- * NOT (dürüstlük ilkesi): Bu testler GERÇEK TCP soketleri (127.0.0.1
- * loopback) üzerinden çalışır — mock/sahte bir bağlantı değil. Bu, satır
- * bazlı okuma, Base64 kodlama ve bağlantı kapatma davranışının gerçekten
- * çalıştığını kanıtlar. Doğrulanmayan şey: gerçek bir telefon ile gerçek
- * bir TV arasında, gerçek bir Wi-Fi ağı üzerinden (NAT, gecikme, Wi-Fi
- * kesintisi vb. koşullarda) davranış — bu yalnızca gerçek donanımda
- * denendiğinde doğrulanabilir.
+ * NOT (dürüstlük ilkesi): Bu testler GERÇEK TCP+TLS soketleri (127.0.0.1
+ * loopback) üzerinden çalışır — mock/sahte bir bağlantı değil (G024'ten
+ * beri `TvEventServer`/`TvEventClient` artık her zaman TLS üzerinden
+ * konuşur; bu dosyadaki testler `expectedFingerprintSha256` VERMEDEN
+ * bağlanır — bu, manuel giriş yolunun "şifreli ama doğrulanmamış" davranışını
+ * sınar; fingerprint PİNLEME testleri `TvEventPairingHandshakeTest`'tedir).
+ * Bu, satır bazlı okuma, Base64 kodlama, TLS el sıkışması ve bağlantı
+ * kapatma davranışının gerçekten çalıştığını kanıtlar. Doğrulanmayan şey:
+ * gerçek bir telefon ile gerçek bir TV arasında, gerçek bir Wi-Fi ağı
+ * üzerinden (NAT, gecikme, Wi-Fi kesintisi vb. koşullarda) davranış — bu
+ * yalnızca gerçek donanımda denendiğinde doğrulanabilir.
  */
 class TvEventServerClientTest {
 
@@ -31,7 +35,7 @@ class TvEventServerClientTest {
     @Test
     fun `client can send a cue and server receives it over a real loopback socket`() {
         val received = LinkedBlockingQueue<CueEvent>()
-        val s = TvEventServer(port = 0) { received.offer(it) }
+        val s = TvEventServer(port = 0, tlsIdentity = TvTlsIdentity.generate()) { received.offer(it) }
         server = s
         s.start()
 
@@ -53,7 +57,7 @@ class TvEventServerClientTest {
     @Test
     fun `multiple cues sent in sequence all arrive in order`() {
         val received = LinkedBlockingQueue<CueEvent>()
-        val s = TvEventServer(port = 0) { received.offer(it) }
+        val s = TvEventServer(port = 0, tlsIdentity = TvTlsIdentity.generate()) { received.offer(it) }
         server = s
         s.start()
 
@@ -78,7 +82,7 @@ class TvEventServerClientTest {
 
     @Test
     fun `send after server stop eventually returns false instead of throwing`() {
-        val s = TvEventServer(port = 0) { }
+        val s = TvEventServer(port = 0, tlsIdentity = TvTlsIdentity.generate()) { }
         server = s
         s.start()
         val c = TvEventClient.connect("127.0.0.1", s.boundPort)

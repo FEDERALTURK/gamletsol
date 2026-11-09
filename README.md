@@ -153,9 +153,11 @@ eksik kod) — hepsi roadmap'in G023 için açıkça istediği senaryoları
 (süresi geçmiş QR, ikinci yayıncı, yanlış TV, tekrar deneme) kapsıyor.
 
 **Doğrulanmadı / bilinçli MVP sınırları (dürüstlük ilkesi, hâlâ geçerli):**
-- **Kanal hâlâ ŞİFRELENMEMİŞ** — eşleştirme kodu yalnızca KİMLİK DOĞRULAMA
-  sağlar, şifreleme sağlamaz. G024'teki TLS + fingerprint doğrulaması henüz
-  eklenmedi; yalnızca ev içi/güvenilir bir Wi-Fi ağında kullanılmalı.
+- **Kanal artık ŞİFRELİ** (bkz. aşağıdaki "TLS + sertifika fingerprint
+  pinning" bölümü, G024, 2026-11-09) — bu notun yazıldığı an itibariyle
+  eksikti, şimdi tamamlandı. QR ile taranan bağlantılarda TV'nin kimliği de
+  PİNLENİR (gerçek MITM koruması); manuel girişte kanal yine şifrelidir ama
+  TV kimliği pinlenmez.
 - **Kamera ile QR TARAMA artık VAR** (bkz. aşağıdaki "Kamerayla QR
   eşleştirme" bölümü, 2026-11-09) — bu notun yazıldığı an itibariyle eksikti,
   şimdi tamamlandı; yine de gerçek donanımda hiç denenmedi.
@@ -202,12 +204,8 @@ sendLayout, clear, heartbeat, disconnect)` arayüzü eklendi:
   soket durumunu kontrol ediyor; karşı tarafın ağ bağlantısını sessizce
   kaybetmesi (Wi-Fi kopması, çökme) hâlâ fark edilemeyebilir. Gerçek
   canlılık kontrolü G028'e (yeniden bağlanma/oturum yönetimi) bırakıldı.
-- G024 (TLS + sertifika fingerprint) hâlâ eklenmedi — roadmap'in kendi
-  eşleştirme akışı tasarımı (TV sertifika fingerprint'ini QR'da gösterip
-  telefonun kamerayla taraması) kamera tabanlı QR okumayı gerektiriyor;
-  bu depoda QR kamera taraması henüz yok (bkz. yukarıdaki core-pairing
-  notu) — 64 karakterlik bir hash'i elle yazmak pratik değil, bu yüzden
-  G024, kamera/QR eklenene kadar bilerek bekletiliyor.
+- G024 (TLS + sertifika fingerprint) artık eklendi — bkz. aşağıdaki "TLS +
+  sertifika fingerprint pinning" bölümü (2026-11-09).
 
 **Gerçekten doğrulanan:** `TvCapabilities.encode()`/`decode()` round-trip
 ve bozuk/eksik satır davranışı (6 test), `SocketTvReceiverAdapter`'ın gerçek
@@ -259,11 +257,78 @@ zxing ile gerçekten kare, hem karanlık hem açık hücreler içeren bir matris
 - QR, yalnızca IP/port/kodu taşır — bu hâlâ NSD/mDNS tabanlı gerçek bir
   otomatik keşif DEĞİLDİR (G025 hâlâ eksik); QR'ı göstermek/taramak için
   kullanıcı hâlâ ilgili ekranları açmalıdır.
-- G024 (TLS + sertifika fingerprint) hâlâ eklenmedi — ama QR artık
-  çalıştığı için, roadmap'in orijinal tasarımındaki engel (fingerprint
-  hash'ini elle yazmanın pratik olmaması) ortadan kalktı; G024 artık QR
-  payload'ına bir fingerprint alanı eklenerek bir sonraki adımda ele
-  alınabilir.
+- G024 (TLS + sertifika fingerprint) artık eklendi — QR'ın sağladığı
+  "fingerprint'i elle yazmaya gerek yok" imkanı tam olarak kullanıldı, bkz.
+  bir aşağıdaki bölüm.
+
+### TLS + sertifika fingerprint pinning (G024, 2026-11-09)
+
+`core-pairing`'in "kanal hâlâ şifrelenmemiş" notuyla işaretlediği boşluk
+kapatıldı — QR taramanın tamamlanması, 64 karakterlik bir SHA-256
+fingerprint'i QR payload'ı üzerinden taşıma imkanı verdiği için artık bu
+adım mümkün:
+
+- **`core-transport`**: `TvTlsIdentity` (Bouncy Castle `bcprov-jdk18on` +
+  `bcpkix-jdk18on` ile — Android ART'ın `sun.security.x509.*`'ı
+  içermemesi nedeniyle saf JDK API'leri yetersiz kaldı) açılışta, **kalıcı
+  OLMAYAN** (uygulama her başlatıldığında yeniden üretilen) kendi-imzalı
+  bir X.509 sertifikası + anahtar çifti üretir ve SHA-256 fingerprint'ini
+  hesaplar. `TvEventServer`'ın dinleme soketi artık KOŞULSUZ bir
+  `SSLServerSocket`'tir (düz TCP yedeği YOK — kırılma değişikliği, bkz.
+  aşağıdaki not). `TvEventClient.connect()` düz soketi koşulsuz bir
+  `SSLSocket`'e yükseltir ve `startHandshake()`'i açıkça çağırır.
+- **Fingerprint pinning**: `TvEventClient.connect(..., expectedFingerprintSha256 = ...)`
+  verilirse, özel bir `X509TrustManager` TV'nin sunduğu sertifikanın
+  SHA-256'sını bu değerle karşılaştırır — uyuşmazsa bağlantı reddedilir
+  (gerçek MITM koruması; eşleştirme kodu KİMLİK doğrulamaz, bunu pinning
+  yapar). `expectedFingerprintSha256 = null` geçilirse (manuel giriş
+  yolu — 64 karakterlik bir hex'i elle yazmak pratik değil), bağlantı yine
+  TLS üzerinden ŞİFRELİDİR ama TV'nin kimliği PİNLENMEZ.
+- **`core-pairing`**: `PairingQrPayload`'a `fingerprintSha256` alanı
+  eklendi, protokol sürümü 1'den 2'ye çıkarıldı — eski (v1) bir QR, bu
+  alanı taşımadığı için artık bilerek reddedilir (`decode()` → `null`);
+  v1/v2 karışık bir TV+telefon çiftinin "yarı güvenli" bir bağlantı
+  kurmasına izin vermek yerine net bir uyumsuzluk hatası tercih edildi.
+- **`app-tv`**: `MainActivity` açılışta bir `TvTlsIdentity` üretir, bunu
+  `TvEventServer`'a verir ve QR payload'ına fingerprint'ini ekler.
+- **`app-mobile`**: `TvRelaySubtitleSink.connectBlocking()`,
+  `CaptionViewModel.connectToTv()` ve `CaptionScreen`'deki hem QR-tarama
+  hem manuel-giriş çağrı yolları, yeni `fingerprintSha256`/
+  `expectedFingerprintSha256` parametresini taşıyacak şekilde güncellendi
+  — QR yolunda gerçek değer, manuel yolda bilerek `null` geçilir.
+
+**Gerçekten doğrulanan:** `TvTlsIdentity.generate()`'in geçerli bir
+kendi-imzalı sertifika + anahtar çifti ürettiği, `TvEventServer`/
+`TvEventClient`'ın artık her zaman gerçek bir TLS el sıkışması üzerinden
+(127.0.0.1 loopback, mock değil) bağlandığı, doğru fingerprint'le bağlanmanın
+başarılı olduğu, YANLIŞ fingerprint'in doğru eşleştirme koduyla BİLE
+reddedildiği (MITM senaryosu simülasyonu — iki ayrı `TvTlsIdentity`
+üretilip biri "saldırgan" sertifikası gibi kullanıldı) ve fingerprint
+verilmeden (manuel giriş) bağlantının yine şifreli kanalda çalıştığı (3 yeni
+test, `TvEventPairingHandshakeTest`); `PairingQrPayload`'ın v2 formatını
+doğru kodladığı/çözdüğü ve eski v1 formatını bilerek reddettiği (yeni
+testler, `PairingQrPayloadTest`). `core-transport` 21→24 teste, `core-pairing`
+20→22 teste çıktı (bkz. "Doğrulama durumu"). Tüm testler bu kum havuzunda
+`--rerun-tasks` ile 5 kez tekrar çalıştırılıp TLS el sıkışmasında flaky bir
+davranış olmadığı ayrıca doğrulandı.
+
+**Doğrulanmadı / bilinçli MVP sınırları (dürüstlük ilkesi):**
+- `TvTlsIdentity` **KALICI DEĞİLDİR** — uygulama her yeniden başlatıldığında
+  yeni bir sertifika/fingerprint üretilir. Bu, ileride G029'un ("bu TV'yi
+  hatırla") beklediği "sabit/kalıcı kimlik" varsayımıyla ÇELİŞİR — G029
+  inşa edilirken bu kimliğin kalıcı hale getirilmesi (Android Keystore'da
+  saklanması) gerekecek.
+- Sunucu, istemci sertifikası TALEP ETMEZ/doğrulamaz (tek yönlü TLS) — bu
+  MVP için kabul edilebilir kabul edildi (telefon tarafının kimliği zaten
+  eşleştirme koduyla doğrulanıyor).
+- Gerçek bir telefon ile gerçek bir TV arasında, gerçek bir Wi-Fi ağında
+  TLS el sıkışması/fingerprint pinning **hiç denenmedi** — yalnızca
+  127.0.0.1 loopback üzerinde test edildi; gerçek ağ koşullarında (NAT,
+  sertifika/saat uyumsuzluğu gibi) sorun çıkıp çıkmayacağı bilinmiyor.
+- QR'ın gerçek bir kamerayla gerçek bir TV ekranından okunabildiği hâlâ
+  doğrulanmadı (bkz. yukarıdaki QR bölümü) — bu nedenle fingerprint'in
+  QR üzerinden gerçek dünyada taşınabildiği de dolaylı olarak doğrulanmamış
+  sayılır.
 
 ## Mimari pivotu (2026-11-09, ilk belge)
 
@@ -328,9 +393,9 @@ ortaya çıktığında eklenecek) — isimler güncel yol haritasının (`docs/r
 trusted-devices, P2-P3), `feature-tv-connect` (NSD/otomatik keşif, G025),
 `receiver-tizen`, `receiver-web`, `source-playstation`, `source-xbox` (X1-X4,
 koşullu), `backend/*` (P6-P7). `app-tv`, `core-transport` ve `core-pairing`
-artık eklendi (yukarıya bakın) — birlikte G022/G023'ü tamamlıyor (TV yetenek
-sözleşmesi + tek kullanımlık eşleştirme kodu); G024'teki TLS/fingerprint
-katmanı ve G025'teki otomatik keşif hâlâ eksik.
+artık eklendi (yukarıya bakın) — birlikte G022/G023/G024'ü tamamlıyor (TV
+yetenek sözleşmesi + tek kullanımlık eşleştirme kodu + TLS/fingerprint
+pinning); G025'teki otomatik keşif hâlâ eksik.
 
 ## İlk sürümün yaptığı (ve yapmadığı)
 
@@ -351,9 +416,9 @@ ilkesi):**
   (daha basit, daha pahalı; bkz. `MlKitTextRecognizer` yorumları).
 - Kare-öncesi değişim algılama (OCR'ı her karede çalıştırmamak) — P2.
 - Konsol bağlantısı, Akıllı Ekran, dublaj paketleri — bkz. yol haritası
-  P3-P6. (TV'ye yansıtmanın İLK/MVP sürümü artık var — bkz. yukarıdaki
-  `core-transport` bölümü — ama şifreleme/eşleştirme/gerçek donanım testi
-  hâlâ yok.)
+  P3-P6. (TV'ye yansıtmanın İLK/MVP sürümü artık var — şifreli kanal +
+  QR ile MITM korumalı eşleştirme dahil, bkz. yukarıdaki `core-transport`
+  bölümleri — ama gerçek donanım/gerçek ağ testi hâlâ yok.)
 - Kalıcı ayarlar/oyun profilleri (`data-local`/Room).
 
 ## Doğrulama durumu (dürüstlük ilkesi)
@@ -361,14 +426,15 @@ ilkesi):**
 - [x] `core-model`, `core-pipeline`, `core-pairing`, `core-transport`: bu
       kum havuzunda **gerçekten derlendi ve test edildi** (`./gradlew
       :core-model:test :core-pipeline:test :core-pairing:test
-      :core-transport:test` — 54 birim testi (2 Cue + 7 CaptionPipeline + 4
+      :core-transport:test` — 59 birim testi (2 Cue + 7 CaptionPipeline + 4
       TvInputSelection + 3 CueEventCodec + 4 TvEventServer/Client + 9
-      PairingRegistry/Token + 11 PairingQrPayload/QrMatrixEncoder (QR) + 5
-      TvEvent+Pairing el sıkışma + 6 TvCapabilities + 3
-      SocketTvReceiverAdapter (G022), hepsi geçti; soket kullanan testler
-      gerçek 127.0.0.1 loopback TCP bağlantıları üzerinden çalışır, mock
-      değil — bu kum havuzunda art arda 5 kez `--rerun-tasks` ile de
-      doğrulandı). Bu testler yazılırken/koşulurken İKİ gerçek hata
+      PairingRegistry/Token + 4 QrMatrixEncoder + 9 PairingQrPayload (G024
+      v2 dahil) + 8 TvEvent+Pairing el sıkışma (G024'ün 3 TLS/fingerprint
+      testi dahil) + 6 TvCapabilities + 3 SocketTvReceiverAdapter (G022),
+      hepsi geçti; soket kullanan testler gerçek 127.0.0.1 loopback
+      TCP/TLS bağlantıları üzerinden çalışır, mock değil — bu kum
+      havuzunda art arda 5 kez `--rerun-tasks` ile de doğrulandı). Bu
+      testler yazılırken/koşulurken İKİ gerçek hata
       bulundu ve düzeltildi (dürüstlük ilkesi için kayıt): (1) istemcinin
       `connect()`'i sunucunun handshake'i GERÇEKTEN doğruladığını
       beklemiyordu, yalnızca yazmanın başarılı olmasına bakıyordu — artık
@@ -408,15 +474,19 @@ ilkesi):**
       çalıştırılmadı**. Bu kapı geçilmeden TV üstü çeviri özelliği
       "çalışıyor" sayılmaz; sonuçlar `docs/compatibility/hardware.md`'ye
       işlenecek.
-- [ ] Telefon↔TV bağlantısı (P3/G022-G023, `core-transport` + `core-pairing`
-      + "TV'ye Yansıt" menüsü): kod yazıldı, gerçek loopback soket
+- [ ] Telefon↔TV bağlantısı (P3/G022-G024, `core-transport` + `core-pairing`
+      + "TV'ye Yansıt" menüsü): kod yazıldı, gerçek loopback soket/TLS
       testleriyle doğrulandı (eşleştirme kodu + yetenek sözleşmesi + QR
-      kodlama/kod çözme dahil), ama **gerçek bir telefon ile gerçek bir TV
-      arasında, gerçek bir Wi-Fi ağında hiç denenmedi** — QR'ın gerçek bir
-      kamerayla gerçek bir TV ekranından okunup okunamadığı da dahil. Kanal
-      hâlâ şifrelenmemiş (G024 yok), gerçek otomatik keşif (NSD/mDNS) de
-      yok (G025) — bkz. yukarıdaki `core-pairing`/`core-transport`/
-      "Kamerayla QR eşleştirme" bölümleri.
+      kodlama/kod çözme + TLS/fingerprint pinning dahil), ama **gerçek bir
+      telefon ile gerçek bir TV arasında, gerçek bir Wi-Fi ağında hiç
+      denenmedi** — QR'ın gerçek bir kamerayla gerçek bir TV ekranından
+      okunup okunamadığı, ve TLS el sıkışmasının gerçek ağ koşullarında
+      sorunsuz çalışıp çalışmadığı da dahil. Kanal artık şifreli ve QR
+      yolunda fingerprint pinlenir (G024 tamam), ama TLS kimliği KALICI
+      DEĞİLDİR (her başlatmada yeniden üretilir) ve gerçek otomatik keşif
+      (NSD/mDNS) hâlâ yok (G025) — bkz. yukarıdaki `core-pairing`/
+      `core-transport`/"Kamerayla QR eşleştirme"/"TLS + sertifika
+      fingerprint pinning" bölümleri.
 
 ## Geliştirme
 

@@ -41,10 +41,27 @@ class TvRelaySubtitleSink : SubtitleSink {
      * geçmiş/tekrar kullanılmış bir kod da (ya da TV'nin yetenek
      * bildirimini hiç göndermemesi, bkz. G022) bu fonksiyonun `false`
      * dönmesine yol açar (hangi nedenle reddedildiği ayrıştırılmaz).
+     *
+     * [expectedFingerprintSha256] (G024): QR ile tarandıysa TV'nin TLS
+     * sertifika fingerprint'i — verilirse bağlantı gerçek MITM korumalı
+     * pinning ile kurulur (fingerprint uyuşmazsa reddedilir). Manuel
+     * giriş yolunda `null` geçilir — bağlantı yine TLS üzerinden
+     * ŞİFRELİDİR ama TV'nin kimliği PİNLENMEZ (bkz. `TvEventClient.connect`
+     * dokümantasyonu).
      */
-    fun connectBlocking(host: String, port: Int, pairingCode: String): Boolean {
+    fun connectBlocking(
+        host: String,
+        port: Int,
+        pairingCode: String,
+        expectedFingerprintSha256: String? = null,
+    ): Boolean {
         disconnect()
-        val newClient = TvEventClient.connect(host, port, pairingCode = pairingCode) ?: return false
+        val newClient = TvEventClient.connect(
+            host,
+            port,
+            pairingCode = pairingCode,
+            expectedFingerprintSha256 = expectedFingerprintSha256,
+        ) ?: return false
         adapter = SocketTvReceiverAdapter(newClient)
         return true
     }

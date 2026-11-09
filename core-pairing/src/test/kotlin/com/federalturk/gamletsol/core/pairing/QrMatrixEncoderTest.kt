@@ -9,7 +9,12 @@ class QrMatrixEncoderTest {
 
     @Test
     fun `encodes a real pairing payload into a square matrix with at least one dark cell`() {
-        val payload = PairingQrPayload(host = "192.168.1.23", port = 48631, code = "7F3K-9QXZ")
+        val payload = PairingQrPayload(
+            host = "192.168.1.23",
+            port = 48631,
+            code = "7F3K-9QXZ",
+            fingerprintSha256 = "a1b2c3d4e5f6" + "0".repeat(52),
+        )
         val matrix = QrMatrixEncoder.encode(payload.encode())
 
         assertTrue("QR matrisi en az bir hücre içermeli", matrix.size > 0)

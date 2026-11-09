@@ -4,17 +4,23 @@
 //
 // NOT (dürüstlük ilkesi / yol haritası): Bu modül, yol haritasının P3 fazı
 // (G022-G030, "TV eşleştirme + güvenli taşıma + olay protokolü") için
-// planlanan mimarinin İLK/MVP sürümüdür:
-// - Şifreleme YOK (düz TCP metin protokolü) — G023-G024'teki TLS + eşleştirme
-//   token'ı HENÜZ eklenmedi. Yalnızca ev içi/aynı Wi-Fi ağı için düşünülmeli.
-// - QR ile eşleştirme / NSD (ağ üzerinde otomatik TV keşfi) YOK — kullanıcı
-//   TV'nin IP adresini/port'unu elle girer (bkz. app-mobile tarafındaki
-//   "TV'ye Yansıt" menü öğesi).
+// planlanan mimarinin sürümüdür:
+// - G024 (2026-11-09): kanal artık TLS ile şifreleniyor (TvTlsIdentity,
+//   bcpkix/bcprov ile üretilen kendi-imzalı sertifika). QR ile eşleşen
+//   istemciler sertifika fingerprint'ini PİNLER (gerçek doğrulama); manuel
+//   IP/port/kod girişiyle bağlanan istemciler fingerprint bilmediği için
+//   HER sertifikaya güvenir (şifreli ama doğrulanmamış kanal — MITM'e karşı
+//   korumasız, pasif dinlemeye karşı korumalı). Bkz. TvEventClient/
+//   TvEventServer dokümantasyonu.
+// - QR ile eşleştirme artık VAR (core-pairing, PairingQrPayload) — NSD (ağ
+//   üzerinde gerçek otomatik TV keşfi) hâlâ YOK; kullanıcı QR tarayabilir
+//   veya IP adresini/port'unu/kodu elle girebilir (bkz. app-mobile
+//   tarafındaki "TV'ye Yansıt" menü öğesi).
 // - Bu modülün kendisi gerçek bir soket üzerinden (localhost loopback)
 //   gerçek birim testleriyle doğrulanmıştır — bu, sahte/mock bir testten
-//   farklı olarak GERÇEK TCP davranışını (bağlantı, satır bazlı okuma,
-//   kapatma) sınar. Ancak gerçek bir telefon ve gerçek bir TV arasında,
-//   gerçek bir Wi-Fi ağında HENÜZ denenmedi.
+//   farklı olarak GERÇEK TCP+TLS davranışını (bağlantı, el sıkışma, satır
+//   bazlı okuma, kapatma) sınar. Ancak gerçek bir telefon ve gerçek bir TV
+//   arasında, gerçek bir Wi-Fi ağında HENÜZ denenmedi.
 plugins {
     alias(libs.plugins.kotlin.jvm)
 }
@@ -22,6 +28,11 @@ plugins {
 dependencies {
     api(project(":core-model"))
     implementation(libs.kotlinx.coroutines.core)
+    // G024: kendi-imzalı TLS sertifikası üretimi (TvTlsIdentity). Her ikisi
+    // de SAF Java'dır (Android'e özgü bir sınıf kullanmaz), bu yüzden bu
+    // modülün "Android SDK gerektirmez" kuralı bozulmaz.
+    implementation(libs.bouncycastle.bcprov)
+    implementation(libs.bouncycastle.bcpkix)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

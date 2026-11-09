@@ -77,12 +77,17 @@ class CaptionViewModel(application: Application) : AndroidViewModel(application)
      * eşleştirme reddi ayrıştırılmaz, MVP sınırı). Başarılı olursa,
      * pipeline'ın ürettiği her yeni cue otomatik olarak [tvRelaySink]
      * üzerinden TV'ye gönderilmeye başlar.
+     *
+     * [fingerprintSha256] (G024): QR ile tarandıysa TV'nin TLS sertifika
+     * fingerprint'i ([PairingQrPayload.fingerprintSha256]) — verilirse
+     * gerçek MITM korumalı pinning uygulanır. Manuel giriş yolunda `null`
+     * geçilir (bkz. [TvRelaySubtitleSink.connectBlocking] dokümantasyonu).
      */
-    fun connectToTv(host: String, port: Int, pairingCode: String) {
+    fun connectToTv(host: String, port: Int, pairingCode: String, fingerprintSha256: String? = null) {
         viewModelScope.launch {
             _tvConnectionState.value = TvConnectionState.CONNECTING
             val connected = withContext(Dispatchers.IO) {
-                tvRelaySink.connectBlocking(host, port, pairingCode)
+                tvRelaySink.connectBlocking(host, port, pairingCode, expectedFingerprintSha256 = fingerprintSha256)
             }
             _tvConnectionState.value = if (connected) {
                 TvConnectionState.CONNECTED

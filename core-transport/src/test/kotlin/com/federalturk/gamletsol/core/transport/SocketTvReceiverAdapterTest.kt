@@ -27,7 +27,7 @@ class SocketTvReceiverAdapterTest {
     @Test
     fun `adapter reports the TV's capabilities and forwards sent cues`() {
         val received = LinkedBlockingQueue<CueEvent>()
-        val s = TvEventServer(port = 0) { received.offer(it) }
+        val s = TvEventServer(port = 0, tlsIdentity = TvTlsIdentity.generate()) { received.offer(it) }
         server = s
         s.start()
 
@@ -46,7 +46,7 @@ class SocketTvReceiverAdapterTest {
 
     @Test
     fun `clear is honestly unsupported and never sends anything`() {
-        val s = TvEventServer(port = 0) { }
+        val s = TvEventServer(port = 0, tlsIdentity = TvTlsIdentity.generate()) { }
         server = s
         s.start()
 
@@ -59,7 +59,7 @@ class SocketTvReceiverAdapterTest {
 
     @Test
     fun `heartbeat and disconnect reflect socket state`() {
-        val s = TvEventServer(port = 0) { }
+        val s = TvEventServer(port = 0, tlsIdentity = TvTlsIdentity.generate()) { }
         server = s
         s.start()
 
