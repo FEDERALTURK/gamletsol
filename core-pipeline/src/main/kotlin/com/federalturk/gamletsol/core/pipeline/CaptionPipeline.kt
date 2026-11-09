@@ -31,6 +31,9 @@ class CaptionPipeline(
     private val stabilityThreshold: Float = DEFAULT_STABILITY_THRESHOLD,
     private val cueTtlMillis: Long = Cue.DEFAULT_SUBTITLE_TTL_MILLIS,
     private val clock: () -> Long = System::currentTimeMillis,
+    // G036: yük artınca (OCR+normalizasyon süresi uzadıkça) kare atlama
+    // oranını kademeli artırır — bkz. AdaptiveFrameThrottle KDoc'u.
+    private val frameThrottle: AdaptiveFrameThrottle = AdaptiveFrameThrottle(),
 ) {
     private var pendingCandidate: PendingCandidate? = null
     private var activeCue: Cue? = null
@@ -46,6 +49,14 @@ class CaptionPipeline(
     suspend fun onFrame(frame: CapturedFrame) {
         expireActiveCueIfNeeded()
 
+        if (!frameThrottle.shouldProcess()) {
+            // G036: cihaz yük altında/ısınmışsa bu kare OCR'a HİÇ verilmez —
+            // doğrudan serbest bırakılır (bkz. AdaptiveFrameThrottle KDoc'u).
+            frame.image.release()
+            return
+        }
+
+        val startedAtMillis = clock()
         val recognized = try {
             textRecognizer.recognize(frame.image, frame.region)
         } finally {
@@ -53,6 +64,7 @@ class CaptionPipeline(
             // KEEP_ONLY_LATEST arabelleğinin OCR'dan hızlı dolmasını önler.
             frame.image.release()
         }
+        frameThrottle.recordProcessingDuration(clock() - startedAtMillis)
         val normalized = recognized?.text?.let(TextNormalizer::normalize).orEmpty()
 
         if (normalized.isEmpty()) {

@@ -685,6 +685,77 @@ kulaklık/Bluetooth çıkışıyla hiç denenmedi. Bir oyun profili SEÇME EKRAN
 henüz yok (yalnızca ViewModel API'si var) ve kalıcı profil depolama
 (DataStore/Room) henüz eklenmedi — `GameProfileStore` yalnız bellek-içi.
 
+### G034-G036 — kalite veri kümesi (bloke), gizlilik denetimi ve performans uyarlaması (2026-11-09)
+
+Yol haritasının P4 fazının kalanı:
+
+- **G034 — OCR ve çeviri kalite veri kümesi: BİLEREK YAPILMADI.** Kabul
+  kriteri "izinli gold metinler ve görülmemiş test sahneleri" ve
+  doğrulaması "en az 100 cue için kör anlam değerlendirmesi" gerçek,
+  lisanslı oyun görüntüsü/metni gerektiriyor — bu kum havuzunda ne gerçek
+  oyun ekran görüntüsü var ne de bunları üretecek bir cihaz/oyun. Rastgele
+  İngilizce metin üretip "gold veri kümesi" diye sunmak dürüstlük ilkesine
+  aykırı olurdu (gerçek OCR hatalarını/gerçek oyun yazı tipi/kontrastını
+  temsil etmez). Bu görev sizin elinizde kalıyor — gerçek oyun
+  sahnelerinden ekran görüntüsü/kayıt toplamanız gerekiyor.
+- **G035 — Gizlilik ve ağ akışı denetimi (statik kod denetimi).** Tüm
+  kaynak kodu (`app-mobile`, `app-tv`, `core-*`, `feature-*`) üzerinde
+  `grep` ile denetim yapıldı:
+  - **Ağ:** Kod tabanındaki TEK ağ çağrıları: (1) `core-transport`'taki
+    `SSLServerSocket`/`SSLSocket` — bunlar yalnız LAN üzerinde, kullanıcının
+    açıkça başlattığı "TV'ye Yansıt" bağlantısı (internete çıkmaz); (2)
+    `MlKitTranslator.ensureModelDownloaded()` — ML Kit'in kendi çeviri
+    MODELİNİ indirir (bir kere, Wi-Fi'da), altyazı/OCR İÇERİĞİNİ göndermez;
+    (3) `NsdManager` (G025) — yalnız yerel ağda mDNS, internete çıkmaz.
+    Başka hiçbir `Socket`/`HttpURLConnection`/`OkHttp`/`Retrofit` kullanımı
+    YOK.
+  - **Log/içerik sızıntısı:** Kod tabanındaki TÜM `Log.*` çağrıları
+    tek tek incelendi — hiçbiri OCR'dan okunan veya çevrilmiş altyazı
+    metnini loglamıyor (yalnız NSD/TV-giriş/kimlik OLAY'ları loglanıyor,
+    örn. "NSD taraması başladı", bağlantı durumları — gerçek cue içeriği
+    asla).
+  - **Cihaz depolaması:** `SharedPreferences` kullanan 5 dosya incelendi
+    (`OnboardingPrefs`, `TrustedTvStore`, `CaptionDisplayPrefs` +
+    kullanım yerleri) — hepsi yalnız AYAR (onboarding bayrağı, güvenilir
+    TV listesi+fingerprint, yazı görünüm ayarları) saklıyor; hiçbiri
+    OCR/çeviri İÇERİĞİNİ kalıcı olarak saklamıyor.
+  - **Sonuç:** Kabul kriterinin "görüntü/ses upload'u ve içerik log'u yok"
+    kısmı statik koddan DOĞRULANDI. "SDK teknik veri akışı beyana dahil"
+    kısmı henüz yapılmadı (bir Play Store Data Safety beyanı yok çünkü
+    uygulama Play Store'da değil — bkz. "GAMLETSOL marka kimliği"
+    bölümündeki not).
+  - **Doğrulanmadı (dürüstlük ilkesi):** Bu statik kod denetimidir —
+    kabul kriterinin "kontrollü ağ trafiği" doğrulaması (örn. mitmproxy
+    ile gerçek cihazdan geçen trafiği yakalayıp inceleme) ve gerçek crash
+    kayıtlarının (Play Console/Firebase Crashlytics YOK, hiç
+    entegre edilmedi) incelenmesi hiç yapılmadı — ikisi de gerçek
+    cihaz/gerçek kullanım gerektirir.
+- **G036 — Termal, pil ve performans uyarlaması (kısmi).** Kabul
+  kriterinin ÇEKİRDEK mantığı — "yük artınca OCR frekansı kontrollü
+  düşer" — yeni `core-pipeline` sınıfı `AdaptiveFrameThrottle` ile
+  uygulandı: son işlenen karelerin (pencereli) ortalama OCR+normalizasyon
+  süresi sürekli olarak hedef bütçenin üstündeyse kare atlama oranını
+  kademeli artırır (`skipFactor`), cihaz toparlanınca kademeli azaltır
+  (histerezis — tek bir yavaş kare anında atlamaya geçirmez).
+  `CaptionPipeline.onFrame` artık her kareden önce `shouldProcess()`
+  sorup `false` dönerse kareyi OCR'a HİÇ vermeden serbest bırakıyor.
+  Saf Kotlin/JVM'dir, 6 yeni birim testi + 1 `CaptionPipeline`
+  entegrasyon testi ile doğrulandı (sürekli yavaş kareler → atlama oranı
+  artıyor; sürekli hızlı kareler → geri düşüyor; üst sınır aşılmıyor).
+
+  **Doğrulanmadı (dürüstlük ilkesi):** `targetFrameBudgetMillis`
+  varsayımsal bir başlangıç değeridir (150ms), gerçek bir orta sınıf
+  telefonda ÖLÇÜLMEDİ. Kabul kriterinin asıl istediği "60 dakika crash
+  yok; 120 dakika pil/ısı/RAM raporu" ve "gecikme p50/p95" ölçümü gerçek
+  bir orta sınıf telefonda uzun bir oturum gerektirir — bu kum havuzunda
+  hiç yapılamadı, hâlâ sizin elinizde. `AdaptiveFrameThrottle` yalnızca
+  "kontrollü düşüş" DAVRANIŞINI sağlıyor; gerçek eşik değerleri gerçek
+  ölçümle ayarlanmalı.
+
+Bu üçü de (G034-G036) `docs/roadmap/tasks/todo.md`'de BİLEREK
+işaretlenmedi — P4-2 kontrol noktası notu gerçek cihaz kanıtı istiyor ve
+G034 hiç başlanmadı.
+
 ## Mimari pivotu (2026-11-09, ilk belge)
 
 Bu depo başlangıçta mikrofonla TV/konsol sesini dinleyip buluta gönderen bir
@@ -782,10 +853,12 @@ ilkesi):**
 - [x] `core-model`, `core-pipeline`, `core-pairing`, `core-transport`: bu
       kum havuzunda **gerçekten derlendi ve test edildi** (`./gradlew
       :core-model:test :core-pipeline:test :core-pairing:test
-      :core-transport:test` — 111 birim testi (2026-11-09, G031
-      eklemesiyle 100'den 111'e — 6 yeni `GameProfileStoreTest` + 5 yeni
-      `TermPreservingTranslatorTest`; bkz. aşağıdaki "G031-G033" bölümü.
-      Önceki artış: G026-G029 eklemeleriyle 66'dan 98'e, G029 kimlik
+      :core-transport:test` — 118 birim testi (2026-11-09, G036 eklemesiyle
+      111'den 118'e — 6 yeni `AdaptiveFrameThrottleTest` + 1 yeni
+      `CaptionPipelineTest` entegrasyon testi; bkz. aşağıdaki "G035-G036"
+      bölümü. Önceki artış: G031 eklemesiyle 100'den 111'e — 6 yeni
+      `GameProfileStoreTest` + 5 yeni `TermPreservingTranslatorTest`; bkz.
+      aşağıdaki "G031-G033" bölümü. Daha önceki artış: G026-G029 eklemeleriyle 66'dan 98'e, G029 kimlik
       kalıcılığı eklemesiyle 98'den 100'e; bkz. yukarıdaki "G026-G029" ve
       "G029 kimlik kalıcılığı" bölümleri — 8 CaptionDisplaySettings + 6
       CueSequenceGuard + 1 TvEventServerReconnect + 5 yeni CueEventCodec
