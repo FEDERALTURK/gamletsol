@@ -12,7 +12,8 @@
   yalnızca LEANBACK_LAUNCHER kategorisinin TV ana ekranında bir kart
   gösterebilmesi için var.
 -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- P3/G022-G030 (telefon↔TV cue taşıma, core-transport): bu uygulama
          yerel ağda bir TCP sunucusu açıp telefondan gelen altyazı/çeviri
@@ -31,15 +32,21 @@
     <application
         android:allowBackup="false"
         android:banner="@drawable/tv_probe_banner"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@android:drawable/sym_def_app_icon"
         android:label="@string/app_name"
         android:theme="@style/Theme.GamletsolTv">
 
+        <!-- NOT (lint uyarısı, bilerek bastırıldı): TV uygulaması TANIM
+             GEREĞİ sabit `landscape` — Android TV cihazlarında döndürme
+             kavramı yok, bu yüzden `LockedOrientationActivity`/
+             `DiscouragedApi` uyarısı burada uygulanamaz bir öneridir. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:screenOrientation="landscape"
-            android:theme="@style/Theme.GamletsolTv">
+            android:theme="@style/Theme.GamletsolTv"
+            tools:ignore="LockedOrientationActivity,DiscouragedApi">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.DEFAULT" />

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Lint'in "Missing data extraction rules" uyarısına cevap — `allowBackup`
+  Android 12+'te bu kaynakla değiştirilmeli. Hem bulut yedeklemesi hem de
+  cihazdan-cihaza aktarım BİLEREK devre dışı: bu uygulama kalıcı bir ayar/
+  kullanıcı verisi TUTMAZ (TLS kimliği/eşleştirme kodu zaten her başlatmada
+  yeniden üretiliyor, bkz. TvTlsIdentity/PairingRegistry), yedeklenecek
+  hiçbir şey yok — `allowBackup="false"` ile tutarlı.
+-->
+<data-extraction-rules>
+    <cloud-backup disableIfNoEncryptionCapabilities="true">
+        <exclude domain="root" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+    </device-transfer>
+</data-extraction-rules>

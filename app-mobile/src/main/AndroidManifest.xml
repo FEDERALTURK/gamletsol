@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Yakalama: kamerayı ekrana doğrultma (yol haritası "Yakalama" #1).
          Konsol bağlantısı (MediaProjection) ileride ayrı bir izin akışıyla
@@ -18,21 +19,33 @@
 
     <application
         android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:icon="@android:drawable/sym_def_app_icon"
         android:label="GAMLETSOL"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
         android:usesCleartextTraffic="false">
+
+        <!-- NOT (dürüstlük ilkesi): `android:icon` şu an sistemin genel
+             yer tutucu simgesi — gerçek bir marka/logo tasarımı henüz
+             yapılmadı (bkz. app-tv'deki aynı yaklaşım). -->
 
         <!-- Gizlilik ilkesi (bkz. kök README.md / yol haritası "Gizlilik
              ilkesi"): kamera görüntüsü asla sunucuya yüklenmez; yalnız OCR
              ile çıkarılan altyazı metni, kullanıcı çeviriyi açtıysa ML Kit'in
              cihaz-üstü modeline (varsayılan) ya da ileride bir bulut çeviri
              servisine (P6, ayrı onay gerektirir) gider. -->
+        <!-- NOT (lint uyarısı, bilerek bastırıldı): `screenOrientation=
+             "portrait"` BİLEREK sabit — kamerayı ekrana doğrultma akışı
+             (OCR pipeline) tutarlı bir çerçeve için dikey kullanımı
+             varsayıyor; Chrome OS/katlanabilir/yatay destek bu MVP'nin
+             kapsamı DIŞINDA (gelecekte gerekirse ayrı bir karar). -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
             android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
-            android:screenOrientation="portrait">
+            android:screenOrientation="portrait"
+            tools:ignore="LockedOrientationActivity,DiscouragedApi">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

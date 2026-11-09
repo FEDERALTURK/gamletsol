@@ -16,6 +16,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -99,7 +100,7 @@ private fun TvProbeScreen() {
     var nowText by remember { mutableStateOf("") }
     var receivedCue by remember { mutableStateOf<CueEvent?>(null) }
     var serverPort by remember { mutableStateOf<Int?>(null) }
-    var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+    var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     val localIp = remember { LocalIpAddress.find() }
 
     // G023: eşleştirme kodu kaydı — tek bir TvEventServer örneğiyle birlikte

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  NOT (dürüstlük ilkesi): bkz. app-mobile/lint.xml'deki aynı açıklama —
+  bu uyarı bcpkix-jdk18on-1.78.1.jar'ın kendi İÇ sınıfından geliyor,
+  bizim TvEventServer/TvEventClient kodumuzdan DEĞİL.
+-->
+<lint>
+    <issue id="TrustAllX509TrustManager" severity="ignore" />
+</lint>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  NOT (dürüstlük ilkesi): TrustAllX509TrustManager uyarısı BİZİM kodumuzda
+  değil, bağımlılık olarak eklenen bcpkix-jdk18on-1.78.1.jar'ın İÇİNDEKİ
+  bir sınıfta (Bouncy Castle'ın kendi yardımcı/test trust manager'ı) —
+  lint, jar'daki .class dosyalarını da tarıyor. Bizim gerçek pinning
+  mantığımız core-transport/TvEventClient.kt'deki `pinningTrustManager`
+  fonksiyonunda ve `checkServerTrusted` ASLA boş değil (fingerprint
+  karşılaştırması yapıyor, bkz. o dosyanın testleri — G024). Bu yüzden bu
+  uyarı burada BİLEREK bastırıldı; kendi kodumuzdaki bir trust-all deseni
+  DEĞİL.
+-->
+<lint>
+    <issue id="TrustAllX509TrustManager" severity="ignore" />
+</lint>
