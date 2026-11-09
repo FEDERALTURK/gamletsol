@@ -33,7 +33,13 @@ jobs:
       # code 127 ile doğrulandı — bkz. git geçmişi). `android-actions/
       # setup-android@v3`, ANDROID_HOME/ANDROID_SDK_ROOT'u kurup
       # cmdline-tools'u PATH'e ekliyor ve lisansları kabul ediyor.
+      # DÜZELTME #2: varsayılan `packages: tools platform-tools` girdisi
+      # artık var olmayan eski "tools" paketini istiyor ve action'ı
+      # başarısızlıkla durduruyor (gerçek CI çalıştırmasında doğrulandı) —
+      # yalnızca var olan `platform-tools`'u istiyoruz.
       - uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools"
 
       - name: Ensure required Android SDK packages
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0" >/dev/null
