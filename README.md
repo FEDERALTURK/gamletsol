@@ -1,10 +1,69 @@
 # GAMLETSOL — Game Translate Console
 
 Oyunların ekranda zaten gösterdiği İngilizce altyazıyı **OCR ile okuyup**
-Türkçeye çeviren Android uygulaması. Mimari ve yol haritası ayrıntıları için
-bkz. proje dokümanı: `GAMLETSOL — Yol Haritası ve Mimari Şema.md`.
+Türkçeye çeviren Android uygulaması. Güncel ve en ayrıntılı yol haritası:
+[`docs/roadmap/GAMLETSOL geliştirme yol haritası.md`](docs/roadmap/GAMLETSOL%20geli%C5%9Ftirme%20yol%20haritas%C4%B1.md)
+— görev kırılımı [`docs/roadmap/tasks/todo.md`](docs/roadmap/tasks/todo.md)
+(G001–G072), özet [`docs/roadmap/tasks/plan.md`](docs/roadmap/tasks/plan.md),
+mimari şema [`docs/roadmap/GAMLETSOL_mimari.svg`](docs/roadmap/GAMLETSOL_mimari.svg).
 
-## Mimari pivotu (2026-11-09)
+## Yol haritası güncellemesi (2026-11-09, ikinci belge) — ÖNEMLİ SIRA DEĞİŞİKLİĞİ
+
+Kullanıcının yerel bilgisayarından okunan daha ayrıntılı/kesin yol haritası
+belgesi, bu depodaki ilk native iskeletin kurduğu sırayı **tersine
+çeviriyor**:
+
+- **Yeni P0 — tek öncelik:** Kullanıcının gerçek donanımı (Xbox Series X/S +
+  75" Profilo Android TV, tam model/firmware bilinmiyor) üzerinde, canlı HDMI
+  görüntüsünün üstüne sabit Türkçe yazının **TvInputManager/TvView ile aynı
+  anda görüntülenebildiğini kanıtlamak** (`G001`-`G006`). Bu kapı geçmeden TV
+  üstü çeviri vaadi "tamamlandı" sayılmaz; telefon ekranı/TTS alternatifleri
+  bu vaadin yerini tutmaz.
+- Bu depoda **şu ana kadar yapılan iş** (`app-mobile` + `core-model` +
+  `core-pipeline` + `feature-capture` — telefon kamerası → OCR → çeviri →
+  telefon ekranı/TTS) yeni belgenin sıralamasında **P1-P2'ye karşılık
+  gelir**, yani P0 (TV HDMI kanıtı) henüz hiç başlamadan ileri bir faza
+  atlanmış durumda. Bu bilinçli bir hata değil, bu depo önceki (daha kısa) yol
+  haritası belgesine göre kurulmuştu; yeni belge daha sonra geldi.
+  **Dürüstlük ilkesi gereği bunu açıkça yazıyoruz:** mevcut kod hâlâ
+  geçerli ve çalışır durumda (bkz. "Doğrulama durumu"), ama şu an asıl kapı
+  olan TV HDMI kanıtı (`G001`-`G006`, `app-tv/probe`) için **hiçbir satır
+  kod yazılmadı**.
+- Yeni belge 72 görevi (**G001-G072**) P0-P7 + X1-X5 (koşullu genişlemeler)
+  olarak numaralandırıyor ve her fazın net efor bütçesini veriyor:
+  **P0-P5 çekirdek 550 saat (≈687,5 saat %25 payla, ≈27,5 hafta)**,
+  **P0-P7 (bulut+ödeme dahil) 750 saat (≈937,5 saat, ≈37,5 hafta)**,
+  tüm koşullu genişlemeler (Xbox doğrudan bağlantı, PS4/PS5, Akıllı Ekran,
+  Samsung/LG, ses paketleri) ayrı PoC sonrası tahmin, kabaca **18-30 ay**.
+  Bu rakamlar **plan/tahmin, ölçüm değil** — ilk 50 saatten sonra gerçek
+  hızla yeniden değerlendirilecek.
+- Dört farklı görüntü+yazı bindirme yolu (A: yerel HDMI + ayrı metin olayları;
+  B: uygulama-içi video+metin tek alıcıdan; C: harici donanım HDMI
+  birleştirici — MVP kapsamı DIŞI; D: ikinci ekran/TTS — "TV üstü çeviri"
+  hedefini KARŞILAMIYOR) belgede ayrıntılı karşılaştırılıyor; hangisinin
+  gerçekte çalıştığı yalnızca G001-G006 sonucunda bilinecek.
+- Yeni belge ayrıca bir **G6 karar kapısı** (yayın-hazırlığı: gizlilik/ödeme/
+  destek/cihaz uyumluluğu bir arada) ve nested bir `android/` dizin yapısı
+  (`app-tv`, `core/transport`, `data/local`, `feature/session`,
+  `feature/speech`, `feature/smart-screen`, kök seviyede `backend/`,
+  `receivers/tizen/`, `receivers/web/`, `contracts/`, `tests/fixtures/`)
+  öneriyor. **Bu dizin yeniden yapılandırması bu commit'te YAPILMADI** —
+  mevcut düz modül yapısı (`app-mobile`, `core-model`, `core-pipeline`,
+  `feature-capture`, repo köküne düz) hâlâ geçerli. Gradle modül ağacının
+  yeniden organize edilmesi, P0 kanıtı (gerçek TV donanımıyla) sonuçlanmadan
+  önce gereksiz risk olarak değerlendirildi: önce `app-tv/probe` modülünü bu
+  düz yapıya **ekleyerek** P0'ı kanıtlamak, ardından gerekirse tüm ağacı
+  taşımak daha güvenli bir sıra.
+
+**Pratik sonuç — bir sonraki gerçek iş:** `G001`-`G003` (hedef donanım kaydı,
+Profilo HDMI giriş keşfi, canlı HDMI üstüne sabit Türkçe yazı denemesi).
+Bunlar kod yazmadan önce **gerçek Profilo TV + Xbox'ta** elle/spike ile
+denenmesi gereken adımlar; bu kum havuzunda donanım erişimi olmadığı için
+burada "tamamlandı" işaretlenemez — kullanıcının kendi TV'sinde yapılması
+gerekir (bkz. `docs/roadmap/tasks/todo.md` G001-G003 kabul/doğrulama
+kriterleri).
+
+## Mimari pivotu (2026-11-09, ilk belge)
 
 Bu depo başlangıçta mikrofonla TV/konsol sesini dinleyip buluta gönderen bir
 Flutter uygulamasıydı. Yol haritası araştırması, gerçek Game Caption
@@ -50,10 +109,12 @@ Compose), bu nedenle yalnızca gerçek bir Android SDK ile (yerelde Android
 Studio, CI'da GitHub'ın hazır SDK'lı ubuntu-latest imajı) derlenebilirler.
 
 Henüz eklenmeyen modüller (ilgili karar kapısı onaylandığında veya ihtiyaç
-ortaya çıktığında eklenecek): `data-local` (Room/DataStore — kalıcı
-ayar/sözlük gerektiğinde), `feature-session` (TV eşleştirme/QR, P3),
-`app-tv`, `receiver-web`, `source-playstation`, `source-xbox`, `backend`
-(P6).
+ortaya çıktığında eklenecek) — isimler güncel yol haritasının (`docs/roadmap/`)
+önerdiği adlarla hizalandı: `app-tv/probe` (**sıradaki asıl iş — G001-G006,
+P0**), `core-transport` (TLS+QR eşleştirme, P3/G023-G024), `data-local`
+(Room/DataStore — kalıcı ayar/sözlük/trusted-devices, P2-P3), `feature-session`
+/`feature-tv-connect` (TV eşleştirme/QR, P3), `receiver-tizen`, `receiver-web`,
+`source-playstation`, `source-xbox` (X1-X4, koşullu), `backend/*` (P6-P7).
 
 ## İlk sürümün yaptığı (ve yapmadığı)
 
@@ -91,9 +152,11 @@ ilkesi):**
       runner'ında çalışır) ilk görevidir.
 - [ ] Gerçek bir Android cihazda kamera + OCR + çeviri + TTS uçtan uca hiç
       denenmedi.
-- [ ] Profilo Android TV'de HDMI passthrough üzerine yazı çizme (G0) henüz
+- [ ] Profilo Android TV'de HDMI passthrough üzerine yazı çizme (artık
+      **G001-G006, P0** — güncel yol haritasının *tek* önceliği) henüz
       araştırılmadı/kodlanmadı — bu ilk iskelet yalnızca telefon ekranını
-      hedefliyor.
+      hedefliyor. Bu kapı geçilmeden TV üstü çeviri özelliği "çalışıyor"
+      sayılmaz; ayrıntı için `docs/roadmap/tasks/todo.md` P0 bölümü.
 
 ## Geliştirme
 
