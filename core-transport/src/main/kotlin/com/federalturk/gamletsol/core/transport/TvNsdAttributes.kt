@@ -28,11 +28,35 @@ data class TvNsdAttributes(
     val fingerprintSha256: String,
     val protocolVersion: Int,
 ) {
-    /** Gerçek `NsdServiceInfo.setAttribute(key, value: ByteArray)` çağrılarında kullanılacak harita. */
+    /**
+     * [fromTxtRecordMap]'in (byte dizisi tabanlı) karşılığı — birim testlerde
+     * round-trip kontrolü için kullanılır.
+     *
+     * NOT (gerçek Android API sınırı, CI'da bulundu): gerçek
+     * `NsdServiceInfo.setAttribute(String, byte[])` çağrısı yalnızca API
+     * 34+'te var; bu uygulamanın minSdk'si (26) daha düşük olduğu için
+     * `app-tv`'deki [TvNsdAdvertiser] bu haritayı DEĞİL, aşağıdaki
+     * [toTxtRecordStringMap]'i (her API seviyesinde var olan
+     * `setAttribute(String, String)` çağrısıyla) kullanır. Yine de
+     * `NsdServiceInfo.getAttributes()` TÜM API seviyelerinde her zaman
+     * `Map<String, byte[]>` döner (TXT kayıtları ağda zaten bayt dizisidir),
+     * bu yüzden [fromTxtRecordMap] (çözme tarafı) değişmeden kalır.
+     */
     fun toTxtRecordMap(): Map<String, ByteArray> = mapOf(
         KEY_PAIRING_CODE to pairingCode.toByteArray(Charsets.UTF_8),
         KEY_FINGERPRINT to fingerprintSha256.toByteArray(Charsets.UTF_8),
         KEY_PROTOCOL_VERSION to protocolVersion.toString().toByteArray(Charsets.UTF_8),
+    )
+
+    /**
+     * Gerçek `NsdServiceInfo.setAttribute(String, String)` çağrılarında
+     * kullanılacak harita — [TvNsdAdvertiser]'ın (`app-tv`) gerçekte
+     * çağırdığı yol budur (bkz. [toTxtRecordMap]'in dokümantasyonu).
+     */
+    fun toTxtRecordStringMap(): Map<String, String> = mapOf(
+        KEY_PAIRING_CODE to pairingCode,
+        KEY_FINGERPRINT to fingerprintSha256,
+        KEY_PROTOCOL_VERSION to protocolVersion.toString(),
     )
 
     companion object {

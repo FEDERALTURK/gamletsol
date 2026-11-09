@@ -57,7 +57,12 @@ class TvNsdAdvertiser(private val context: Context) {
             serviceName = SERVICE_NAME_HINT
             serviceType = TvNsdAttributes.SERVICE_TYPE
             this.port = port
-            attributes.toTxtRecordMap().forEach { (key, value) -> setAttribute(key, value) }
+            // NOT (gerçek Android API sınırı, CI'da bulundu): `setAttribute(String, byte[])`
+            // yalnızca API 34+'te var; bu uygulamanın minSdk'si (26) daha
+            // düşük olduğu için her API seviyesinde var olan
+            // `setAttribute(String, String)` kullanılıyor — bkz.
+            // TvNsdAttributes.toTxtRecordStringMap dokümantasyonu.
+            attributes.toTxtRecordStringMap().forEach { (key, value) -> setAttribute(key, value) }
         }
 
         fun update(name: String?) {
