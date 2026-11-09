@@ -11,16 +11,23 @@ import java.util.Base64
  * dokümantasyonu) başarıyla kurulduğunda, kullanıcı açıkça "Bu TV'yi
  * hatırla" seçerse bu kaydı oluşturur.
  *
- * NOT (dürüstlük ilkesi — gerçek sınır, 2026-11-09): Bu kaydın GÜVENLİK
- * değeri şu an KISITLIDIR, çünkü [com.federalturk.gamletsol.core.transport.TvTlsIdentity]
- * HENÜZ KALICI DEĞİL — `app-tv` her yeniden başlatıldığında YENİ bir
- * sertifika/fingerprint üretir (bkz. o sınıfın dokümantasyonu). Bu, bu
- * kaydın [fingerprintSha256]'sının bir TV YENİDEN BAŞLATILDIKTAN SONRA
- * artık geçerli OLMAYACAĞI anlamına gelir — kullanıcı o zaman yeniden QR
- * taramalı/TV'yi yeniden hatırlamalıdır. Bu kayıt mekanizmasının kendisi
- * (hatırlama/unutma/listeleme) doğru çalışır ve test edilmiştir; eksik olan,
- * TV kimliğinin kalıcılığıdır (ayrı, henüz açılmamış bir iş — Android
- * Keystore'da kalıcı bir anahtar çifti/sertifika saklamayı gerektirir).
+ * NOT (dürüstlük ilkesi — güncelleme 2026-11-09): Bu kaydın GÜVENLİK değeri
+ * artık GERÇEKTİR — `app-tv`, [com.federalturk.gamletsol.core.transport.TvTlsIdentity]'yi
+ * elde etmek için `PersistentTvIdentity.loadOrCreate()`'i çağırıyor; bu,
+ * Android'in kendi `AndroidKeyStore`'unda KALICI bir anahtar çifti/sertifika
+ * kullanır, böylece [fingerprintSha256] TV YENİDEN BAŞLATILDIKTAN SONRA DA
+ * GEÇERLİ kalır (eski sınır — her başlatmada yeni fingerprint — kalktı).
+ * Bu kayıt mekanizmasının kendisi (hatırlama/unutma/listeleme) doğru çalışır
+ * ve test edilmiştir.
+ *
+ * GERÇEK, AÇIK KALAN SINIR: `PersistentTvIdentity`'nin gerçek bir Android
+ * cihazda/`AndroidKeyStore`'da çalıştığı bu kum havuzunda DOĞRULANAMADI —
+ * yalnızca Android'in resmi, belgeli `KeyGenParameterSpec` davranışına
+ * dayanır. `PersistentTvIdentity`, herhangi bir AndroidKeyStore hatasında
+ * sessizce geçici (ephemeral) bir kimliğe düşer — bu durumda bu kaydın
+ * [fingerprintSha256]'sı o TV yeniden başlatılınca yine geçersiz olur
+ * (kullanıcı yeniden QR taramalıdır). Bu düşüş gerçek cihazlarda ne sıklıkla
+ * olur, henüz ölçülmedi/bilinmiyor.
  *
  * [host]/[port] de yalnızca BİLGİ amaçlıdır (TV'nin yerel ağ adresi
  * değişebilir, ör. DHCP) — bir yeniden bağlanma denemesinde başlangıç

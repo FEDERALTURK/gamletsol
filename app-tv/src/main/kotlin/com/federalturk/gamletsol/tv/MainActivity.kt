@@ -87,6 +87,16 @@ import java.util.Locale
  *    "seç") adım adım ayarlayabilir ([CaptionDisplaySettings], saf Kotlin —
  *    core-model); seçimler [CaptionDisplayPrefs] ile `SharedPreferences`'a
  *    kalıcı olarak kaydedilir.
+ * 10. (G029 kimlik kalıcılığı, 2026-11-09) TLS kimliği artık
+ *    [TvTlsIdentity.generate] (her başlatmada YENİ) ile değil,
+ *    [PersistentTvIdentity.loadOrCreate] ile elde edilir — bu, Android'in
+ *    `AndroidKeyStore`'unda KALICI bir anahtar çifti/sertifika kullanır,
+ *    böylece TV'nin fingerprint'i UYGULAMA YENİDEN BAŞLATILSA BİLE DEĞİŞMEZ
+ *    ve "bu TV'yi hatırla" (G029, `app-mobile`'daki [TrustedTvStore])
+ *    GERÇEK güvenlik değeri taşır (bkz. [PersistentTvIdentity] dokümantasyonu
+ *    — bu kum havuzunda gerçek bir AndroidKeyStore çağrısı DENENEMEDİ, bu
+ *    yüzden [PersistentTvIdentity] herhangi bir hatada sessizce geçici
+ *    kimliğe düşer).
  *
  * NOT (dürüstlük ilkesi): #1-3 gerçek Profilo TV + Xbox donanımında HENÜZ
  * denenmedi (bkz. docs/compatibility/hardware.md). #4-#5'teki TCP sunucusu
@@ -101,7 +111,11 @@ import java.util.Locale
  * edildi (core-transport), NsdManager'ın kendisi burada hiç çalıştırılmadı.
  * #9'daki ayar paneli de gerçek bir TV kumandasıyla (D-pad fokus/gezinme)
  * HİÇ denenmedi — yalnızca [CaptionDisplaySettings]'in kelepçeleme (clamp)
- * mantığı core-model'de birim test edildi.
+ * mantığı core-model'de birim test edildi. #10'daki [PersistentTvIdentity]
+ * — gerçek bir Android cihazda/`AndroidKeyStore`'da HİÇ çalıştırılmadı/
+ * denenmedi (bu kum havuzunda Android SDK/cihaz yok); yalnızca Android'in
+ * resmi, belgeli `KeyGenParameterSpec` davranışına dayanır ve herhangi bir
+ * hatada geçici kimliğe güvenle düşer.
  */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -134,11 +148,14 @@ private fun TvProbeScreen() {
     val pairingRegistry = remember { PairingRegistry() }
     var currentToken by remember { mutableStateOf<PairingToken?>(null) }
 
-    // G024: TLS kimliği — uygulama bu ekran canlı olduğu sürece SABİTTİR
-    // (yeniden başlatılana kadar aynı sertifika/fingerprint kullanılır).
-    // NOT (dürüstlük ilkesi/MVP sınırı): KALICI DEĞİL — bkz. TvTlsIdentity
-    // dokümantasyonu, G029 ("bu TV'yi hatırla") henüz bunu beklemiyor.
-    val tlsIdentity = remember { TvTlsIdentity.generate() }
+    // G024/G029: TLS kimliği — artık AndroidKeyStore'da KALICI olarak
+    // saklanıyor (bkz. PersistentTvIdentity dokümantasyonu). Uygulama
+    // yeniden başlatılsa BİLE aynı sertifika/fingerprint kullanılır; bu
+    // sayede G029'daki "bu TV'yi hatırla" özelliği GERÇEK güvenlik değeri
+    // taşır. Herhangi bir AndroidKeyStore hatasında (bu kum havuzunda
+    // doğrulanamayan bir durum) PersistentTvIdentity sessizce geçici
+    // (ephemeral) bir kimliğe düşer — TV hiçbir zaman bu yüzden çökmez.
+    val tlsIdentity = remember { PersistentTvIdentity.loadOrCreate() }
 
     // P3/G022-G030 (MVP): telefondan gelen cue'ları dinleyen TCP sunucusu +
     // G023'teki eşleştirme kodu doğrulaması + G024'teki TLS. Activity canlı

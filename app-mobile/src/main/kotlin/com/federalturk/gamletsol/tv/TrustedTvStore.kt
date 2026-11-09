@@ -12,12 +12,16 @@ import com.federalturk.gamletsol.core.pairing.TrustedTvRegistry
  * Kotlin, `core-pairing`) — bu nesne yalnızca o mantığı `SharedPreferences`'a
  * BAĞLAR (bkz. AGENTS.md madde 5 — modül sınırları).
  *
- * NOT (dürüstlük ilkesi — bkz. [TrustedTv] dokümantasyonu): Bu depo doğru
- * çalışır (eklenen/kaldırılan kayıt kalıcıdır, test edilmiştir — bkz.
- * `core-pairing`'deki `TrustedTvRegistryTest`/`TrustedTvCodecTest`) ama
- * sakladığı fingerprint, TV'nin TLS kimliği KALICI olana kadar (henüz
- * değil, bkz. `TvTlsIdentity`) TV her yeniden başlatıldığında GEÇERSİZ
- * hale gelir.
+ * NOT (dürüstlük ilkesi — güncelleme 2026-11-09, bkz. [TrustedTv]
+ * dokümantasyonu): Bu depo doğru çalışır (eklenen/kaldırılan kayıt
+ * kalıcıdır, test edilmiştir — bkz. `core-pairing`'deki
+ * `TrustedTvRegistryTest`/`TrustedTvCodecTest`). Sakladığı fingerprint artık
+ * GENELLİKLE TV yeniden başlatıldıktan sonra da geçerli kalır — `app-tv`
+ * artık `PersistentTvIdentity` ile `AndroidKeyStore`'da KALICI bir TLS
+ * kimliği kullanıyor. Bu, gerçek bir Android cihazda HENÜZ doğrulanamadı
+ * (bu kum havuzunda Android SDK yok); bir AndroidKeyStore hatası olursa
+ * `PersistentTvIdentity` geçici kimliğe düşer ve o durumda fingerprint
+ * yine her başlatmada değişir.
  */
 object TrustedTvStore {
     private const val PREFS_NAME = "trusted_tvs"

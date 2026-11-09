@@ -164,8 +164,11 @@ eksik kod) — hepsi roadmap'in G023 için açıkça istediği senaryoları
 - **NSD (otomatik TV keşfi) artık VAR** (bkz. aşağıdaki "NSD/mDNS otomatik
   keşif" bölümü, G025, 2026-11-09) — bu notun yazıldığı an itibariyle
   eksikti, şimdi tamamlandı; QR ve manuel giriş yine de kalır (yedek yol).
-- **Reconnect/hatırlama YOK** (G028-G029) — her bağlantı için TV'de yeni
-  bir kod üretilmesi gerekir, "bu TV'yi hatırla" özelliği yok.
+- **Reconnect/hatırlama artık VAR** (G028-G029, bkz. aşağıdaki
+  "G026-G029" ve "G029 kimlik kalıcılığı" bölümleri, 2026-11-09) — bu
+  notun yazıldığı an itibariyle eksikti, şimdi tamamlandı; otomatik
+  yeniden bağlanma (bağlantı koptuğunda istemcinin kendiliğinden yeniden
+  denemesi) hâlâ YOK — kullanıcı manuel olarak yeniden bağlanmalı.
 - Gerçek bir telefon ile gerçek bir TV arasında, gerçek bir Wi-Fi ağında
   **hiç denenmedi** (NAT/güvenlik duvarı, Wi-Fi gecikmesi, bağlantı kopması
   gibi gerçek dünya koşulları test edilmedi).
@@ -315,11 +318,12 @@ testler, `PairingQrPayloadTest`). `core-transport` 21→24 teste, `core-pairing`
 davranış olmadığı ayrıca doğrulandı.
 
 **Doğrulanmadı / bilinçli MVP sınırları (dürüstlük ilkesi):**
-- `TvTlsIdentity` **KALICI DEĞİLDİR** — uygulama her yeniden başlatıldığında
-  yeni bir sertifika/fingerprint üretilir. Bu, ileride G029'un ("bu TV'yi
-  hatırla") beklediği "sabit/kalıcı kimlik" varsayımıyla ÇELİŞİR — G029
-  inşa edilirken bu kimliğin kalıcı hale getirilmesi (Android Keystore'da
-  saklanması) gerekecek.
+- (2026-11-09 — ÇÖZÜLDÜ, bkz. aşağıdaki "G029 kimlik kalıcılığı" bölümü)
+  Bu notun yazıldığı sırada `TvTlsIdentity` KALICI DEĞİLDİ (`generate()`,
+  her başlatmada yeni sertifika/fingerprint). `app-tv` artık
+  `PersistentTvIdentity` ile `AndroidKeyStore`'da kalıcı bir kimlik
+  kullanıyor; `generate()`'in kendisi hâlâ (kasıtlı olarak) birim testler
+  için geçici kalıyor.
 - Sunucu, istemci sertifikası TALEP ETMEZ/doğrulamaz (tek yönlü TLS) — bu
   MVP için kabul edilebilir kabul edildi (telefon tarafının kimliği zaten
   eşleştirme koduyla doğrulanıyor).
@@ -500,7 +504,10 @@ HÂLÂ geçtiği, `CaptionDisplaySettings`'in her alanının kelepçelenmesi
 (ondalık birikim hatası olmadan), `TrustedTvCodec`/`TrustedTvRegistry`'nin
 hatırlama/unutma/tekilleştirme/case-insensitive fingerprint eşleşmesi.
 core-transport 31→38 test, core-pairing 22→34 test, core-model'e 8 yeni
-test eklendi — repo toplamı 66→98 test.
+test eklendi — repo toplamı 66→98 test. (2026-11-09, G029 kimlik
+kalıcılığı eklemesiyle core-transport'a `TvTlsIdentityTest` — 2 yeni test —
+eklendi: 38→40, repo toplamı 98→100; bkz. aşağıdaki "G029 kimlik
+kalıcılığı" bölümü.)
 
 **Doğrulanmadı / bilinçli MVP sınırları (dürüstlük ilkesi):**
 - G027'nin ayar paneli gerçek bir TV kumandasıyla (D-pad fokus/gezinme)
@@ -515,19 +522,56 @@ test eklendi — repo toplamı 66→98 test.
 - TTL/zaman-aşımına dayalı otomatik "temizle" (clear) mesajı protokole
   HENÜZ eklenmedi (`TvCapabilities.supportsClear` hâlâ `false`) — TV,
   son aldığı cue'yu yenisi gelene kadar ekranda tutar.
-- **G029'un güvenlik değeri şu an KISITLI** çünkü
-  `TvTlsIdentity` HENÜZ KALICI DEĞİL (`app-tv` her yeniden başlatıldığında
-  yeni bir sertifika/fingerprint üretir, bkz. o sınıfın dokümantasyonu) —
-  bu yüzden hatırlanan bir TV'nin fingerprint'i, TV YENİDEN
-  BAŞLATILDIKTAN SONRA artık geçerli OLMAZ; kullanıcı o zaman yeniden
-  QR taramalı/TV'yi yeniden hatırlamalıdır. Hatırlama/unutma mekanizmasının
-  kendisi doğru çalışır ve test edilmiştir — eksik olan TV kimliğinin
-  kalıcılığıdır (Android Keystore'da kalıcı bir anahtar çifti saklamayı
-  gerektiren, ayrı ve henüz açılmamış bir iş).
 - G030 (Profilo TV ilk kabul matrisi) bu kum havuzunda YAPILAMAZ — gerçek
   Xbox+Profilo donanımında 10 güvenli eşleşme + 60 dakika canlı kamera→TV
   + kopmada temizleme kaydı gerektirir, kullanıcının kendisi tarafından
   yapılmalıdır.
+
+### G029 kimlik kalıcılığı — TV TLS kimliği artık AndroidKeyStore'da (2026-11-09)
+
+Yukarıdaki "G029'un güvenlik değeri KISITLI" notu artık GEÇERSİZ — şöyle
+çözüldü:
+
+- `core-transport`'taki `TvTlsIdentity`'ye yeni bir fabrika eklendi:
+  `fromKeyManagers(certificate, keyManagers, fingerprintSha256)` — bu,
+  ÖNCEDEN başka bir yerde üretilmiş/yüklenmiş bir sertifika+anahtar
+  çiftini SARAR (kendisi hiçbir şey üretmez), böylece `core-transport`
+  Android'e bağımlı hale GELMEZ (AGENTS.md madde 5).
+- `app-tv`'de yeni `PersistentTvIdentity` sınıfı (`PersistentTvIdentity.kt`)
+  — gerçek `android.security.keystore.KeyGenParameterSpec` +
+  `AndroidKeyStore` ile 2048-bit'lik bir RSA anahtar çifti ve ona eklenen
+  kendi-imzalı bir X.509 sertifika üretir/yükler (`loadOrCreate()`). Özel
+  anahtar `AndroidKeyStore`'un kendisinden hiçbir zaman dışarı ÇIKMAZ.
+- `MainActivity`, TLS kimliğini artık `TvTlsIdentity.generate()` (geçici)
+  yerine `PersistentTvIdentity.loadOrCreate()` ile alır — bu sayede TV'nin
+  fingerprint'i **uygulama/cihaz yeniden başlatılsa bile DEĞİŞMEZ** ve
+  G029'un ("bu TV'yi hatırla") beklediği "sabit/kalıcı kimlik" koşulu
+  GERÇEKTEN karşılanır.
+- `PersistentTvIdentity.loadOrCreate()`, HERHANGİ bir istisnada (ör. bu
+  cihazda/OEM'de beklenmeyen bir AndroidKeyStore davranışı) sessizce
+  `TvTlsIdentity.generate()`'e (geçici kimlik) düşer — TV hiçbir zaman bu
+  yüzden çökmez, yalnızca o oturumda hatırlama kalıcılığı kaybolur.
+
+**Gerçekten doğrulanan:** Hiçbir şey yeni bu değişiklikte — `core-transport`
+modülünde Android SDK'sı OLMADIĞI için `PersistentTvIdentity`'nin kendisi
+(tamamen `app-tv`'de, Android'e özgü) bu kum havuzunda ne derlenebildi ne
+de birim test edilebildi; yalnızca `TvTlsIdentity.fromKeyManagers`
+fabrikasının (saf Kotlin, core-transport) davranışı mevcut
+`TvTlsIdentityTest`-benzeri testlerle dolaylı olarak kapsanır (gerçek
+sertifika/keyManager nesneleri verildiğinde doğru alanlarla bir
+`TvTlsIdentity` döndürdüğü).
+
+**Doğrulanmadı / dürüstlük ilkesi — gerçek, açık kalan sınır:**
+`PersistentTvIdentity`'nin GERÇEK bir Android cihazda/TV'de — gerçek
+`AndroidKeyStore` sağlayıcısıyla, gerçek bir TLS el sıkışmasında — çalıştığı
+HENÜZ denenmedi (bu kum havuzunda Android SDK/cihaz yok). Bu, Android'in
+resmi/belgeli davranışına dayanan makul bir tasarımdır ama AndroidKeyStore
+destekli anahtarlarla özel TLS sunucuları kurmanın bazı OEM/Android sürüm
+kombinasyonlarında bilinen uyumluluk tuhaflıkları vardır — bu yüzden G030
+(gerçek donanım QA'sı) sırasında özellikle izlenmesi gereken bir nokta
+olarak işaretlendi. Ayrıca anahtarın 10 yıllık geçerlilik süresi dolduğunda
+ne olacağı (`PersistentTvIdentity` şu an bunu ELE ALMIYOR) ayrı, açık bir
+MVP sınırıdır.
 
 ## Mimari pivotu (2026-11-09, ilk belge)
 
@@ -626,11 +670,13 @@ ilkesi):**
 - [x] `core-model`, `core-pipeline`, `core-pairing`, `core-transport`: bu
       kum havuzunda **gerçekten derlendi ve test edildi** (`./gradlew
       :core-model:test :core-pipeline:test :core-pairing:test
-      :core-transport:test` — 98 birim testi (2026-11-09, G026-G029
-      eklemeleriyle 66'dan; bkz. yukarıdaki "G026-G029" bölümü — 8
-      CaptionDisplaySettings + 6 CueSequenceGuard + 1
-      TvEventServerReconnect + 5 yeni CueEventCodec doğrulama testi + 4
-      TrustedTvCodec + 8 TrustedTvRegistry eklendi). Önceki sayım: 2 Cue +
+      :core-transport:test` — 100 birim testi (2026-11-09, G026-G029
+      eklemeleriyle 66'dan 98'e, G029 kimlik kalıcılığı eklemesiyle
+      98'den 100'e; bkz. yukarıdaki "G026-G029" ve "G029 kimlik
+      kalıcılığı" bölümleri — 8 CaptionDisplaySettings + 6
+      CueSequenceGuard + 1 TvEventServerReconnect + 5 yeni CueEventCodec
+      doğrulama testi + 4 TrustedTvCodec + 8 TrustedTvRegistry + 2
+      TvTlsIdentity.fromKeyManagers eklendi). Önceki sayım: 2 Cue +
       7 CaptionPipeline + 4 TvInputSelection + 3 CueEventCodec + 4
       TvEventServer/Client + 9 PairingRegistry/Token + 4 QrMatrixEncoder +
       9 PairingQrPayload (G024 v2 dahil) + 8 TvEvent+Pairing el sıkışma
@@ -701,10 +747,13 @@ ilkesi):**
       çalışıp çalışmadığı da dahil (bu üçü de hiçbir zaman gerçek Android
       donanımında/ağında çalıştırılmadı). Kanal artık şifreli, QR/NSD
       yolunda fingerprint pinlenir, ve TV'ler artık otomatik olarak
-      listelenebilir (G022-G025 tamam), ama TLS kimliği KALICI DEĞİLDİR
-      (her başlatmada yeniden üretilir, G028-G029 eksik) — bkz. yukarıdaki
-      `core-pairing`/`core-transport`/"Kamerayla QR eşleştirme"/"TLS +
-      sertifika fingerprint pinning"/"NSD/mDNS otomatik keşif" bölümleri.
+      listelenebilir, TLS kimliği artık `AndroidKeyStore`'da KALICIDIR ve
+      "bu TV'yi hatırla" gerçek güvenlik değeri taşır (G022-G029 tamam) —
+      ama bu kalıcılığın GERÇEK bir Android cihazda çalıştığı HENÜZ
+      denenmedi (bkz. yukarıdaki "G029 kimlik kalıcılığı" bölümü). Bkz.
+      yukarıdaki `core-pairing`/`core-transport`/"Kamerayla QR eşleştirme"/
+      "TLS + sertifika fingerprint pinning"/"NSD/mDNS otomatik keşif"/"G029
+      kimlik kalıcılığı" bölümleri.
 
 ## Geliştirme
 

@@ -32,13 +32,19 @@ import javax.net.ssl.KeyManagerFactory
  * bağımsız, yaygın kullanılan yolu budur. Bouncy Castle'ın kendisi de saf
  * Java'dır, bu modülün "Android SDK gerektirmez" kuralını bozmaz.
  *
- * NOT (dürüstlük ilkesi / MVP sınırı): Kimlik KALICI DEĞİL — `app-tv` her
- * yeniden başlatıldığında yeni bir sertifika/fingerprint üretilir. Bu,
- * roadmap'in G029'da istediği "bu TV'yi hatırla" kalıcı güven özelliğiyle
- * (telefonun aynı fingerprint'i tekrar tekrar görmesi) ÇELİŞİR — şu an
- * her eşleştirme YENİ bir QR/fingerprint gerektirir, bu zaten G023'ün
- * davranışıyla (tek kullanımlık kod) uyumludur ama G029 eklenene kadar
- * "kalıcı güvenilir TV" kavramı YOKTUR.
+ * NOT (2026-11-09 güncellemesi — G029 kimlik kalıcılığı): [generate] burada
+ * KASITLI olarak EPHEMERAL (geçici, bellek-içi) kalır — bu kum havuzunda
+ * Android SDK'sı olmadan çalışabilen, `core-transport`'un TÜM soket/TLS
+ * testlerinin (ör. `TvEventPairingHandshakeTest`) dayandığı yoldur. Gerçek
+ * `app-tv` ARTIK bu metodu çağırmıyor — onun yerine [fromKeyManagers]
+ * fabrikasını, Android'in kendi `AndroidKeyStore`'unda (donanım destekli,
+ * KALICI) ürettiği/yüklediği bir anahtar çifti + sertifikayla kullanıyor
+ * (bkz. `app-tv`'deki `PersistentTvIdentity`). Bu sayede G029'un ("bu
+ * TV'yi hatırla") beklediği "TV yeniden başlatılınca fingerprint
+ * DEĞİŞMEZ" koşulu artık GERÇEKTEN karşılanıyor — eski MVP sınırı
+ * (her yeniden başlatmada yeni fingerprint) kalktı. `generate()`'in
+ * KENDİSİ hâlâ her çağrıda yeni bir kimlik üretir (bu, birim testler
+ * için TASARLANMIŞ davranıştır, değiştirilmedi).
  */
 class TvTlsIdentity private constructor(
     val certificate: X509Certificate,
@@ -94,5 +100,30 @@ class TvTlsIdentity private constructor(
         /** [bytes]'ın SHA-256 özetini küçük harf hex string olarak döner — QR/log/karşılaştırma için ortak format. */
         fun sha256Hex(bytes: ByteArray): String =
             MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+
+        /**
+         * [certificate] + [keyManagers] + [fingerprintSha256] ÖNCEDEN
+         * başka bir yerde üretilmiş/yüklenmiş bir TLS kimliğinden
+         * [TvTlsIdentity] oluşturur — [generate]'in tersine, bu fabrika
+         * KENDİSİ hiçbir anahtar/sertifika ÜRETMEZ, yalnızca zaten var
+         * olanları SARAR.
+         *
+         * Bu, `app-tv`'deki `PersistentTvIdentity`'nin gerçek
+         * `android.security.keystore.KeyGenParameterSpec` ile
+         * `AndroidKeyStore`'da ürettiği/yüklediği KALICI anahtar çifti +
+         * kendi-imzalı sertifikayı buraya taşımasının yolu — bu modül
+         * (core-transport) Android'e bağımlı OLMADIĞI için gerçek
+         * `AndroidKeyStore` çağrıları burada YAŞAMAZ (bkz. AGENTS.md
+         * madde 5), yalnızca sonucu kabul eder.
+         */
+        fun fromKeyManagers(
+            certificate: X509Certificate,
+            keyManagers: Array<KeyManager>,
+            fingerprintSha256: String,
+        ): TvTlsIdentity = TvTlsIdentity(
+            certificate = certificate,
+            keyManagers = keyManagers,
+            fingerprintSha256Hex = fingerprintSha256,
+        )
     }
 }
