@@ -14,9 +14,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -42,17 +44,24 @@ import androidx.camera.view.PreviewView
 /**
  * NOT (geri bildirim, 2026-11-09): İlk beta sürümünde izin verildikten
  * sonra ekranda kamera önizlemesi dışında HİÇBİR şey yoktu — ne başlık, ne
- * durum bilgisi, ne de "nasıl kullanılır" açıklaması vardı; kullanıcı
- * "kamera açılıyor, başka hiçbir şey yok" diye bildirdi. Bu dosyaya
- * eklenen [TopBar] (başlık + bilgi düğmesi) ve [StatusChip] (model
- * indiriliyor/taranıyor/hata durumu) bunu gidermek için eklendi.
+ * durum bilgisi, ne de bir menü vardı. Sonra bir bilgi (i) düğmesi
+ * eklendi; bu sürümde kullanıcı "ilk açılışta menüler, kurulum talimatları
+ * ve diğer bilgiler olsun" diye tekrar istedi, bu yüzden:
+ * - İlk açılışta ayrı bir [OnboardingScreen] akışı gösteriliyor
+ *   (MainActivity'de yönlendiriliyor, bkz. OnboardingPrefs).
+ * - Ana ekrandaki tek "bilgi" düğmesi, birden çok öğeli gerçek bir
+ *   AÇILIR MENÜYE (overflow) dönüştürüldü: Kurulum Talimatları, Gizlilik,
+ *   Tanıtımı Yeniden Göster.
  */
 @Composable
-fun CaptionScreen(viewModel: CaptionViewModel, onRequestCameraPermission: () -> Unit) {
+fun CaptionScreen(
+    viewModel: CaptionViewModel,
+    onRequestCameraPermission: () -> Unit,
+    onShowOnboardingAgain: () -> Unit,
+) {
     val granted by viewModel.cameraPermissionGranted.collectAsState()
     val cue by viewModel.subtitleSink.activeCue.collectAsState()
     val status by viewModel.pipelineStatus.collectAsState()
-    var showInfoDialog by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         if (granted) {
@@ -61,7 +70,7 @@ fun CaptionScreen(viewModel: CaptionViewModel, onRequestCameraPermission: () -> 
             PermissionRequestContent(onRequestCameraPermission = onRequestCameraPermission)
         }
 
-        TopBar(onInfoClick = { showInfoDialog = true })
+        TopBar(onShowOnboardingAgain = onShowOnboardingAgain)
 
         val translated = cue?.translatedText
         if (granted && !translated.isNullOrBlank()) {
@@ -70,14 +79,13 @@ fun CaptionScreen(viewModel: CaptionViewModel, onRequestCameraPermission: () -> 
             StatusChip(status = status)
         }
     }
-
-    if (showInfoDialog) {
-        InfoDialog(onDismiss = { showInfoDialog = false })
-    }
 }
 
 @Composable
-private fun BoxScope.TopBar(onInfoClick: () -> Unit) {
+private fun BoxScope.TopBar(onShowOnboardingAgain: () -> Unit) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    var dialog by remember { mutableStateOf<MenuDialog?>(null) }
+
     Row(
         modifier = Modifier
             .align(Alignment.TopCenter)
@@ -92,11 +100,76 @@ private fun BoxScope.TopBar(onInfoClick: () -> Unit) {
             color = Color.White,
             style = MaterialTheme.typography.titleMedium,
         )
-        IconButton(onClick = onInfoClick) {
-            Icon(Icons.Filled.Info, contentDescription = "Nasıl çalışır / bilgi", tint = Color.White)
+        Box {
+            IconButton(onClick = { menuExpanded = true }) {
+                Icon(Icons.Filled.MoreVert, contentDescription = "Menü", tint = Color.White)
+            }
+            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                DropdownMenuItem(
+                    text = { Text("Kurulum talimatları") },
+                    onClick = {
+                        menuExpanded = false
+                        dialog = MenuDialog.SETUP
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("Gizlilik ve nasıl çalışır") },
+                    onClick = {
+                        menuExpanded = false
+                        dialog = MenuDialog.PRIVACY
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("Tanıtımı yeniden göster") },
+                    onClick = {
+                        menuExpanded = false
+                        onShowOnboardingAgain()
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("Hakkında / yol haritası durumu") },
+                    onClick = {
+                        menuExpanded = false
+                        dialog = MenuDialog.ABOUT
+                    },
+                )
+            }
         }
     }
+
+    when (dialog) {
+        MenuDialog.SETUP -> InfoDialog(
+            title = "Kurulum talimatları",
+            body = "1. Oyun/cihaz ayarlarından altyazıları (Subtitles/Captions) " +
+                "İNGİLİZCE olarak açın.\n" +
+                "2. Telefonu, altyazının göründüğü ekranı net ve sabit görecek " +
+                "şekilde tutun — mümkünse bir stand/tripod kullanın.\n" +
+                "3. Altyazı net göründüğünde çeviri birkaç kare içinde ekranın " +
+                "altında belirir ve sesli okunur.\n" +
+                "4. İlk açılışta çeviri modeli indirilir — buna Wi-Fi gerekir.",
+            onDismiss = { dialog = null },
+        )
+        MenuDialog.PRIVACY -> InfoDialog(
+            title = "Gizlilik ve nasıl çalışır",
+            body = "Metin tanıma (OCR) ve çeviri tamamen CİHAZ ÜZERİNDE yapılır " +
+                "(Google ML Kit). Kamera görüntüsü hiçbir zaman bir sunucuya " +
+                "yüklenmez — yalnızca ekrandaki yazı okunur, ses dinlenmez.",
+            onDismiss = { dialog = null },
+        )
+        MenuDialog.ABOUT -> InfoDialog(
+            title = "Hakkında",
+            body = "GAMLETSOL — BETA sürüm. Bu, temel kamera → OCR → çeviri → " +
+                "altyazı/TTS akışının çalıştığı ilk sürümdür. Ayar menüsü, " +
+                "oyun profilleri, TV'ye yansıtma ve konsol bağlantısı yol " +
+                "haritasındaki sonraki fazlarda (bkz. proje deposu " +
+                "docs/roadmap/) planlanmıştır; henüz eklenmedi.",
+            onDismiss = { dialog = null },
+        )
+        null -> Unit
+    }
 }
+
+private enum class MenuDialog { SETUP, PRIVACY, ABOUT }
 
 @Composable
 private fun BoxScope.StatusChip(status: PipelineStatus) {
@@ -119,22 +192,11 @@ private fun BoxScope.StatusChip(status: PipelineStatus) {
 }
 
 @Composable
-private fun InfoDialog(onDismiss: () -> Unit) {
+private fun InfoDialog(title: String, body: String, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("GAMLETSOL nasıl çalışır?") },
-        text = {
-            Text(
-                "Kamerayı, İngilizce altyazının göründüğü ekrana (TV/monitör) " +
-                    "doğrultun. Uygulama metni cihaz üzerinde okur (OCR) ve " +
-                    "Türkçeye çevirip altta gösterir, ayrıca sesli okur.\n\n" +
-                    "Gizlilik: kamera görüntüsü hiçbir zaman bir sunucuya " +
-                    "yüklenmez — çeviri tamamen cihaz üzerinde (ML Kit) yapılır.\n\n" +
-                    "Bu bir BETA sürümdür: ayar menüsü, oyun profilleri ve " +
-                    "kalite iyileştirmeleri henüz eklenmedi (bkz. proje yol " +
-                    "haritası).",
-            )
-        },
+        title = { Text(title) },
+        text = { Text(body) },
         confirmButton = {
             Button(onClick = onDismiss) { Text("Tamam") }
         },
