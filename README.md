@@ -4,7 +4,7 @@ Oyunların ekranda zaten gösterdiği İngilizce altyazıyı **OCR ile okuyup**
 Türkçeye çeviren Android uygulaması. Güncel ve en ayrıntılı yol haritası:
 [`docs/roadmap/GAMLETSOL geliştirme yol haritası.md`](docs/roadmap/GAMLETSOL%20geli%C5%9Ftirme%20yol%20haritas%C4%B1.md)
 — görev kırılımı [`docs/roadmap/tasks/todo.md`](docs/roadmap/tasks/todo.md)
-(G001–G072), özet [`docs/roadmap/tasks/plan.md`](docs/roadmap/tasks/plan.md),
+(G001–G076), özet [`docs/roadmap/tasks/plan.md`](docs/roadmap/tasks/plan.md),
 mimari şema [`docs/roadmap/GAMLETSOL_mimari.svg`](docs/roadmap/GAMLETSOL_mimari.svg).
 
 **Uygulamayı kurup kullanmak mı istiyorsunuz?** APK indirme, telefon/TV
@@ -33,12 +33,14 @@ belgesi, bu depodaki ilk native iskeletin kurduğu sırayı **tersine
   geçerli ve çalışır durumda (bkz. "Doğrulama durumu"), ama şu an asıl kapı
   olan TV HDMI kanıtı (`G001`-`G006`, `app-tv/probe`) için **hiçbir satır
   kod yazılmadı**.
-- Yeni belge 72 görevi (**G001-G072**) P0-P7 + X1-X5 (koşullu genişlemeler)
+- Yeni belge 76 görevi (**G001-G076**) P0-P7 + X1-X6 (koşullu genişlemeler)
   olarak numaralandırıyor ve her fazın net efor bütçesini veriyor:
   **P0-P5 çekirdek 550 saat (≈687,5 saat %25 payla, ≈27,5 hafta)**,
   **P0-P7 (bulut+ödeme dahil) 750 saat (≈937,5 saat, ≈37,5 hafta)**,
   tüm koşullu genişlemeler (Xbox doğrudan bağlantı, PS4/PS5, Akıllı Ekran,
-  Samsung/LG, ses paketleri) ayrı PoC sonrası tahmin, kabaca **18-30 ay**.
+  Samsung/LG, ses paketleri, oyun bazlı önceden hazırlanmış çeviri satır
+  veritabanı — bkz. `analiz/gamecaption-karsilastirma.md`, G073-G076) ayrı
+  PoC sonrası tahmin, kabaca **18-30 ay**.
   Bu rakamlar **plan/tahmin, ölçüm değil** — ilk 50 saatten sonra gerçek
   hızla yeniden değerlendirilecek.
 - Dört farklı görüntü+yazı bindirme yolu (A: yerel HDMI + ayrı metin olayları;

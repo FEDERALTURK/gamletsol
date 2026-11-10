@@ -694,6 +694,44 @@ Koşullu genişleme: erişim, cihaz, lisans ve önceki kapıların sonucuna gör
 
 > **Kontrol noktası X5-1 (G070–G072):** Bu grubun kabul kanıtlarını kaydet; uygulanmış kod varsa ilgili derleme ve hedefli testleri çalıştır; fiziksel cihaz iddiasını gerçek cihazla doğrula. Açık engeli ve sonraki bağımlılığı yaz. Kanıt yoksa kutuları işaretleme.
 
+## X6 — Oyun bazlı önceden hazırlanmış çeviri satır veritabanı
+
+Koşullu genişleme: içerik stratejisi kararına bağlı, önceki kapıların sonucuna göre yeniden tahmin edilir. **Not:** Bu bölüm rakip ürün incelemesinden (bkz. `analiz/gamecaption-karsilastirma.md`) esinle eklendi — yalnızca kavram seviyesinde ("oyun başına önceden hazırlanmış çeviri hızlı yoldan gösterilebilir, canlı MT yedek kalır"); format, alan adları, eşleştirme algoritması ve editoryal içerik tamamen GAMLETSOL'a özgüdür ve sıfırdan tasarlanmıştır. Bir oyunun satırları yalnız GAMLETSOL'un kendi OCR yakalamasından ve kendi editoryal çevirisinden üretilir; başka bir ürünün çeviri/dublaj verisi hiçbir biçimde alınmaz veya içe aktarılmaz.
+
+- [ ] **G073 — Satır veritabanı format ve eşleştirme sözleşmesi** (S)
+
+  **Önerilen konum:** `core-model / core-pipeline/lookup` · **Bağımlılık:** G019,G031
+
+  **Kabul:** GAMLETSOL'a özgü paket şeması (sürüm alanı, satır başına normalize-İngilizce anahtar, tam eşleşme ve önek indeksi, opsiyonel konuşmacı/stil alanı) tanımlı; OCR çıkışı önce bu indekste aranır, bulunamazsa G010/G047 canlı çeviriye düşer; G019 cache anahtarına paket sürümü eklenir.
+
+  **Doğrulama:** Aynı sahne iki kez okutulduğunda ilk eşleşme canlı çeviriyi atlıyor mu, paket sürümü değişince cache'in bozulmadığını ve eşleşmeyen satırın sorunsuz fallback aldığını küçük sahte paketle doğrula.
+
+- [ ] **G074 — Editoryal satır üretim hattı** (M)
+
+  **Önerilen konum:** `tools/content-authoring` · **Bağımlılık:** G073,G034
+
+  **Kabul:** Tek oyun için: gerçek OCR yakalamalarından İngilizce satır çıkarma → ekip/insan tarafından yazılan özgün Türkçe çeviri → inceleme onayı → pakete derleme adımları belgeli ve araçla desteklenmiş; hiçbir adımda üçüncü bir üründen çeviri metni veya ses kopyalanmıyor.
+
+  **Doğrulama:** Bir pilot oyun için üretilen paketin tüm satırlarının kaynağının "kendi OCR + kendi çevirimiz" olduğu editoryal kayıtla kanıtlı; dış kaynak satırı varsa pakete girmeden reddedilir.
+
+- [ ] **G075 — Sürümlü metin paketi dağıtımı** (M)
+
+  **Önerilen konum:** `feature-content-packs / backend/catalog` · **Bağımlılık:** G073,G071
+
+  **Kabul:** İmzalı manifest/hash, atomik kurulum, depolama sınırı ve sürüm geri dönüşü G071'deki ses paketi altyapısıyla paylaşılır; bir paket yalnız metin, metin+TTS veya metin+lisanslı dublaj olarak işaretlenebilir.
+
+  **Doğrulama:** Bozuk/yarım indirme, disk dolu, farklı oyun sürümü ve paket olmadan (tamamen canlı MT) çalışma senaryolarını dene.
+
+- [ ] **G076 — Ücretsiz/Pro paket kapsamı ve içerik haklarının takibi** (S)
+
+  **Önerilen konum:** `backend/catalog / docs/decisions/content-rights` · **Bağımlılık:** G075,G049,G054
+
+  **Kabul:** Hangi oyunun paketinin ücretsiz/Pro katmanda olduğu, hangi satırların insan incelemesinden geçtiği ve haklar/sorumluluk kaydı (ör. bir satırın yanlış çıkması durumunda sorumluluk) yazılı.
+
+  **Doğrulama:** Yetkisiz kullanıcı Pro pakete erişemiyor mu ve paket kataloğu güncellemesi mevcut kullanıcıları bozmuyor mu test et.
+
+> **Kontrol noktası X6-1 (G073–G076):** Bu grubun kabul kanıtlarını kaydet; uygulanmış kod varsa ilgili derleme ve hedefli testleri çalıştır; fiziksel cihaz iddiasını gerçek cihazla doğrula. Açık engeli ve sonraki bağımlılığı yaz. Kanıt yoksa kutuları işaretleme.
+
 ## Ortak tamamlanma ölçütü
 
 Bir iş, yalnız kod yazıldığı için tamamlanmaz. Kabul kanıtı, ilgili hedefli test, kullanıcıya açık hata davranışı ve güncellenmiş destek kapsamı gerekir. Gizli anahtar, oturum çerezi, kullanıcı görüntüsü veya oyun metni standart günlüğe yazılmaz. TV özellikleri mock/emülatörle doğrulanmış sayılmaz. Bir kaynak kapandığında kamera/decoder/çevrim dışı model kaynakları bırakılır; son metin ve eski konuşma kuyruğu temizlenir.

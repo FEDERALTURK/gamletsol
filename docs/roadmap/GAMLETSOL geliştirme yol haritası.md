@@ -371,6 +371,12 @@ Seçili oyun dublaj paketi için içerik hakkı, insan çeviri kontrolü, izinli
 
 Oyun metni ve ses paketini dağıtmak, kişisel anlık çeviriden farklı hak değerlendirmesidir. WIPO çeviri ve uyarlamayı hak sahibinin kontrol edebildiği kullanım alanları arasında açıklar. İlk katalog yalnız hakları doğrulanmış içerikle oluşturulur; orijinal oyuncu sesinin izinsiz klonlanması başlangıç ürününe eklenmez. ([WIPO telif açıklaması](https://www.wipo.int/en/web/copyright/faq-copyright))
 
+### 12.1 Oyun bazlı önceden hazırlanmış çeviri satır veritabanı (koşullu, X6)
+
+Rakip ürün incelemesi (bkz. proje analiz belgesi `analiz/gamecaption-karsilastirma.md`) şu gözlemi doğruladı: canlı makine çevirisi tek başına yeterli değil, popüler oyunlarda önceden hazırlanmış, insan onaylı bir satır veritabanı kalite/tutarlılık açısından fark yaratıyor. Bu, **kavram seviyesinde** GAMLETSOL'un X6 görev grubuna (G073–G076) alındı — format, eşleştirme algoritması ve içeriğin kendisi tamamen bizim tasarımımız ve kendi editoryal üretimimizdir; başka bir üründen hiçbir satır, ses veya kod alınmaz.
+
+Çalışma mantığı: OCR'dan çıkan İngilizce metin önce aktif oyunun paketindeki tam eşleşme/önek indeksinde aranır; bulunursa ekip tarafından önceden çevrilmiş, incelenmiş Türkçe karşılığı anında gösterilir (gecikme ve kalite avantajı). Bulunamazsa akış normal şekilde G010/G047'deki canlı çeviriye düşer — yani bu katman var olan boru hattını değiştirmez, sadece önüne hızlı/kaliteli bir önbellek-benzeri katman ekler. Bir oyun için paket üretmek, o oyunu GAMLETSOL'un kendi OCR'ıyla oynayıp yakalamak, metni ekip/çevirmen tarafından özgün şekilde Türkçeye çevirmek ve incelemekten geçer (G074) — 12. bölümdeki ses paketi hak/inceleme disiplini (insan çeviri kontrolü, haklar doğrulanmadan katalog dışı tutma) burada da aynen geçerlidir. Dağıtım, G071'in sürümlü/imzalı paket altyapısını paylaşır (G075); hangi oyunun ücretsiz/Pro katmanda olduğu ayrı bir iş kararıdır (G076).
+
 ## 13. Kalite hedefleri ölçümden önce vaat değildir
 
 Başlangıç veri kümesi izinli test sahnelerinden 500–1000 altyazı cue'su ve 100–200 menü görüntüsü içermelidir. Ayar geliştirmede kullanılan sahnelerle görülmemiş test sahneleri ayrılır. Farklı oyun türleri, fontlar, koyu/açık sahne, iki konuşmacı, kısa replik, sayı/negasyon, kamera açısı ve ışık değerlendirilir. Dağıtım hakkı olmayan oyun kaydı repoya eklenmez.

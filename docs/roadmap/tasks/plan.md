@@ -11,7 +11,7 @@ Fiziksel prototip veya uygulama geliştirmesi bu hazırlık çalışmasında yap
 ## Dosyalar
 
 - [Tam ürün ve teknik yol haritası](../GAMLETSOL%20geliştirme%20yol%20haritası.md): kapsam, mimari, kaynaklar, veri/API, ekonomi, riskler ve zaman planı.
-- [72 görev ve kontrol noktaları](todo.md): kararlı G001–G072 kimlikleri, önerilen modüller, bağımlılıklar, kabul ve doğrulama.
+- [76 görev ve kontrol noktaları](todo.md): kararlı G001–G076 kimlikleri, önerilen modüller, bağımlılıklar, kabul ve doğrulama.
 - [Düzenlenebilir mimari SVG](../GAMLETSOL_mimari.svg).
 - [Mimari PNG](../GAMLETSOL_mimari.png).
 
@@ -21,8 +21,8 @@ Bağlantılar aynı çıktı paketinde göreli tutulmuştur; tasks klasöründen
 
 P0 50 + P1 75 + P2 125 + P3 100 + P4 100 + P5 100 = **550 net saat çekirdek**. P6 bulut 100 + P7 ödeme 100 eklenince **750 net saat**. %25 payla sırasıyla **687,5** ve **937,5 saat**; haftada varsayımsal 25 üretken saatte **27,5** ve **37,5 hafta**. Bu bir teslim taahhüdü değildir. İlk 50 saatten sonra gerçek hızla yeniden tahmin edilir.
 
-Xbox doğrudan bağlantı, PS4/PS5, Akıllı Ekran, Samsung, LG ve lisanslı ses paketleri koşullu genişlemedir. Bütün ürün için 18–30 aylık planlama bandı teknik erişim, lisans, cihaz ve içerik beklemelerine bağlıdır. Sıra: eldeki Profilo + Xbox ihtiyacını kanıtla → çekirdeği güvenilir yap → beta → ölçümlü bulut/ödeme → doğrulanmış genişlemeler.
+Xbox doğrudan bağlantı, PS4/PS5, Akıllı Ekran, Samsung, LG, lisanslı ses paketleri ve oyun bazlı önceden hazırlanmış çeviri satır veritabanı (G073–G076, kendi editoryal içeriğimizle, rakip incelemesinden sadece kavram seviyesinde esinle) koşullu genişlemedir. Bütün ürün için 18–30 aylık planlama bandı teknik erişim, lisans, cihaz ve içerik beklemelerine bağlıdır. Sıra: eldeki Profilo + Xbox ihtiyacını kanıtla → çekirdeği güvenilir yap → beta → ölçümlü bulut/ödeme → doğrulanmış genişlemeler.
 
 ## Çalışma ilkeleri
 
-72 görev bir uygulama backlog’udur; iş kutuları başlangıçta boştur. M işleri kodlamadan önce 1–2 saatlik alt adımlara bölünür. Önerilen klasörler mevcut dosya gibi sunulmaz. Her üç görevde kontrol noktası vardır; başarısız deneyi sonuç olarak kaydetmek, ilgili ürün kabiliyetini başarılı saymak değildir. Güncel mağaza ve tedarikçi şartları uygulama/yayın anında yeniden doğrulanır.
+76 görev bir uygulama backlog’udur; iş kutuları başlangıçta boştur. M işleri kodlamadan önce 1–2 saatlik alt adımlara bölünür. Önerilen klasörler mevcut dosya gibi sunulmaz. Her üç görevde kontrol noktası vardır; başarısız deneyi sonuç olarak kaydetmek, ilgili ürün kabiliyetini başarılı saymak değildir. Güncel mağaza ve tedarikçi şartları uygulama/yayın anında yeniden doğrulanır.
