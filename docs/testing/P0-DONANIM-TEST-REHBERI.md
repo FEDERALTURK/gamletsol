@@ -93,14 +93,22 @@ Ağ" tablolarına işleyin.
 
 ## G002 — Profilo HDMI girişlerini keşfet
 
+> **Not (2026-11-10):** Uygulamanın gerçek kullanım ekranı artık sade
+> (yalnızca eşleştirme/altyazı) — bu testin gerektirdiği teknik satırlar
+> varsayılan olarak GİZLİ. Ekranın sağ üst köşesindeki **"Gelişmiş / Test
+> modu"** düğmesine basarak açın; bu düğme AÇIK kaldığı sürece aşağıdaki
+> satırlar görünür kalır.
+
 1. `app-tv-debug.apk`'yı Profilo TV'ye kurun ve açın.
-2. Uygulama açıldığında ekranda şu satırları göreceksiniz (gerçek kod,
+2. Sağ üst köşedeki **"Gelişmiş / Test modu"** düğmesine basın (metni
+   "Test modu: AÇIK" olarak değişir ve sarı renge döner).
+3. Test modu açıkken ekranda şu satırları göreceksiniz (gerçek kod,
    `MainActivity.kt`, `TvProbeScreen`):
    - `Durum: <IDLE/TUNING/...> · Giriş: <bulunan inputId veya "bulunamadı">`
    - `Algılanan N giriş: <her girişin id'si>(hdmi=true/false,pt=true/false)`
    - Eğer bir hata oluşursa (örn. `TvInputManager` erişimi reddedilirse):
      `Hata: <tam hata metni>`
-3. **Kaydedilecekler** (`hardware.md` → "G002" bölümü):
+4. **Kaydedilecekler** (`hardware.md` → "G002" bölümü):
    - "Algılanan N giriş" satırının **tam metnini** kopyalayın.
    - Bu listede Xbox'ın takılı olduğu HDMI'a karşılık gelen girişi bulun
      (genelde `hdmi=true,pt=true` olanlardan biri; eğer birden fazla
@@ -117,9 +125,14 @@ Ağ" tablolarına işleyin.
 
 ## G003 — Canlı HDMI üstüne sabit Türkçe yazı (30 dakikalık dayanıklılık testi)
 
+> **Not (2026-11-10):** Bu test, yalnızca **"Gelişmiş / Test modu"** AÇIK
+> iken anlamlıdır — kapalıyken `app-tv` artık HDMI'a hiç tune olmaya
+> çalışmaz (sade mod). Devam etmeden önce sağ üstteki düğmeye basıp
+> "Test modu: AÇIK" olduğundan emin olun.
+
 1. Xbox'ı açın, bir oyun veya ana menü ekranında bırakın (video akışı sürekli
    olsun).
-2. `app-tv` açıkken, ekranın arka planında Xbox'ın görüntüsü görünmelidir
+2. `app-tv` açıkken (Test modu AÇIK), ekranın arka planında Xbox'ın görüntüsü görünmelidir
    (bu, `TvView` + `PassthroughTuner`'ın gerçekten o HDMI girişine tune
    olabildiğini kanıtlar). Görünmüyorsa (ör. siyah ekran, "Durum: ERROR"),
    bu zaten bir G003 sonucudur — "tune olmadı" diye kaydedin.
@@ -165,8 +178,9 @@ gerektirmez — gözle fark edilir bir fark olup olmadığını arıyoruz.
    doğrudan Xbox'ın HDMI girişine geçin. Hızlı tepki gerektiren bir oyun/
    menü ile (örn. bir FPS oyununun menüsünde hızlı yukarı/aşağı gezinme,
    ya da basit bir buton-basımına-tepki testi) gecikmeyi "hissedin".
-2. **`app-tv` modu:** `app-tv`'yi açın, aynı Xbox girişine tune olmasını
-   bekleyin, aynı testi tekrarlayın.
+2. **`app-tv` modu:** `app-tv`'yi açın, sağ üstten **"Gelişmiş / Test
+   modu"**'nu açın, aynı Xbox girişine tune olmasını bekleyin, aynı testi
+   tekrarlayın.
 3. **Kaydedilecekler** (`hardware.md`'ye yeni bir "## G004" bölümü
    ekleyerek — şu an dosyada bu bölüm yok, siz veya ben birlikte
    ekleyebiliriz):
@@ -253,9 +267,11 @@ kez** çalıştırılmasıdır.
 2. TV'de `app-tv`'yi açın — ekranda bir **eşleştirme kodu** ve bir **QR
    kod** göreceksiniz (`Eşleştirme kodu: XXXXXX (60s)` satırı + altında QR
    kare).
-3. Telefonda `app-mobile`'ı açın, QR tarama ekranına gidin, TV'deki QR'ı
-   okutun (veya kodu + TV'nin IP'sini + portunu elle girin — ekranda
-   `Telefondan bağlan: <IP>:<port>` satırı olarak görünür).
+3. Telefonda `app-mobile`'ı açın, menü (⋮) → "TV'ye Yansıt" → "QR ile
+   tara"ya dokunup TV'deki QR'ı okutun. (QR okunmazsa: telefondaki
+   diyalogda "QR okunmuyor mu? Elle gir"e basın VE TV'de sağ üstteki
+   "Gelişmiş / Test modu"nu açın — IP:port satırı yalnızca Test modu
+   açıkken görünür.)
 4. Bağlantı başarılı olursa, telefon kamerasını TV ekranına (Xbox'ın
    gösterdiği İngilizce altyazıya) doğrultun — OCR/çeviri pipeline'ı
    çalışıp çevrilen metni TV'ye geri göndermeli, TV overlay'inde

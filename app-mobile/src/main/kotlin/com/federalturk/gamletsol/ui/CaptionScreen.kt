@@ -384,27 +384,42 @@ private fun TvConnectDialog(
     // (kullanıcı farklı bir TV'ye bağlanmaya karar verirse) sıfırlanır,
     // çünkü artık doldurulan host/port o kayda ait OLMAYABİLİR.
     var pinnedFingerprint by remember { mutableStateOf<String?>(null) }
+    // (2026-11-10, kullanıcı geri bildirimi: "eşleştirme/bağlanma süreci
+    // karışık") Manuel IP/port/kod girişi artık varsayılan olarak
+    // GİZLİ — bu, QR/otomatik-keşif bulunamadığı durumlar için bir yedek
+    // yoldur, birincil akış değildir. Hiçbir alan/işlev kaldırılmadı.
+    var showManualEntry by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("TV'ye Yansıt (beta)") },
         text = {
             Column {
-                Text(
-                    "Yakındaki bir TV otomatik bulunduysa aşağıda listelenir — " +
-                        "ona dokunmanız yeterli. Bulunmazsa (G025: bazı ağlarda " +
-                        "otomatik keşif engellenmiş olabilir), TV ekranındaki QR " +
-                        "kodunu kamerayla tarayın ya da aynı bilgiyi elle girin. " +
-                        "Telefon ve TV AYNI Wi-Fi ağında olmalı. Eşleştirme kodu " +
-                        "60 saniye geçerlidir ve tek kullanımlıktır — süresi " +
-                        "geçerse TV'de \"Yeni eşleştirme kodu oluştur\" " +
-                        "düğmesine basın.\n\n" +
-                        "NOT: Manuel girişte TV'nin kimliği doğrulanmaz (yine de " +
-                        "şifrelidir); otomatik keşif/QR ile bağlanıldığında " +
-                        "TV'nin kimliği de pinlenir (gerçek MITM koruması).",
-                )
-                Spacer(modifier = Modifier.height(12.dp))
                 if (connectionState != TvConnectionState.CONNECTED) {
+                    // Birincil akış, tam olarak Game Caption'daki gibi: TV
+                    // ekranındaki QR'ı tarayıp bağlan. Tek, büyük düğme.
+                    Text(
+                        "TV ekranındaki QR kodunu tarayın. Telefon ve TV AYNI " +
+                            "Wi-Fi ağında olmalı.",
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(
+                        onClick = onStartQrScan,
+                        enabled = cameraPermissionGranted,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("QR ile tara")
+                    }
+                    if (!cameraPermissionGranted) {
+                        Text(
+                            "QR taramak için önce kamera iznini verin (ana ekrandan).",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+
+                    if (trustedTvs.isNotEmpty() || discoveredTvs.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
                     if (trustedTvs.isNotEmpty()) {
                         Text("Hatırlanan TV'ler:", style = MaterialTheme.typography.bodySmall)
                         trustedTvs.forEach { tv ->
@@ -414,6 +429,7 @@ private fun TvConnectDialog(
                                         host = tv.host
                                         portText = tv.port.toString()
                                         pinnedFingerprint = tv.fingerprintSha256
+                                        showManualEntry = true
                                     },
                                     enabled = connectionState != TvConnectionState.CONNECTING,
                                 ) {
@@ -424,12 +440,6 @@ private fun TvConnectDialog(
                                 }
                             }
                         }
-                        Text(
-                            "Hatırlanan bir TV'ye bağlanmak için yukarıdan seçin, TV " +
-                                "ekranındaki GÜNCEL eşleştirme kodunu girip \"Bağlan\"a basın.",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
                     }
                     if (discoveredTvs.isNotEmpty()) {
                         Text("Yakındaki TV'ler:", style = MaterialTheme.typography.bodySmall)
@@ -441,72 +451,81 @@ private fun TvConnectDialog(
                                 Text("${tv.serviceName} (${tv.host}:${tv.port})")
                             }
                         }
-                        Spacer(modifier = Modifier.height(12.dp))
                     }
-                    Button(onClick = onStartQrScan, enabled = cameraPermissionGranted) {
-                        Text("QR ile tara")
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    TextButton(onClick = { showManualEntry = !showManualEntry }) {
+                        Text(if (showManualEntry) "Elle girmeyi gizle" else "QR okunmuyor mu? Elle gir")
                     }
-                    if (!cameraPermissionGranted) {
+                }
+
+                if (connectionState == TvConnectionState.CONNECTED || showManualEntry) {
+                    if (connectionState != TvConnectionState.CONNECTED) {
                         Text(
-                            "QR taramak için önce kamera iznini verin (ana ekrandan).",
+                            "TV ekranındaki IP/port ve eşleştirme kodunu girin. Kod " +
+                                "60 saniye geçerlidir — süresi geçerse TV'de \"Yeni " +
+                                "eşleştirme kodu oluştur\" düğmesine basıp güncel kodu " +
+                                "girin.\n\n" +
+                                "NOT: Manuel girişte TV'nin kimliği doğrulanmaz (yine de " +
+                                "şifrelidir); QR/otomatik keşif ile bağlanıldığında " +
+                                "TV'nin kimliği de pinlenir (gerçek MITM koruması).",
                             style = MaterialTheme.typography.bodySmall,
                         )
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Yeni TV'leri hatırla:", style = MaterialTheme.typography.bodySmall)
-                        TextButton(onClick = { onRememberNewTvChanged(!rememberNewTv) }) {
-                            Text(if (rememberNewTv) "Açık" else "Kapalı")
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Yeni TV'leri hatırla:", style = MaterialTheme.typography.bodySmall)
+                            TextButton(onClick = { onRememberNewTvChanged(!rememberNewTv) }) {
+                                Text(if (rememberNewTv) "Açık" else "Kapalı")
+                            }
                         }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = host,
+                            onValueChange = {
+                                host = it
+                                // Kullanıcı hatırlanan bir kaydı doldurduktan
+                                // sonra alanı elle değiştirirse, artık BAŞKA
+                                // bir TV'ye bağlanmayı deniyor olabilir —
+                                // pinlenmiş fingerprint o eski kayda ait
+                                // kalmamalı.
+                                pinnedFingerprint = null
+                            },
+                            label = { Text("TV IP adresi (ör. 192.168.1.23)") },
+                            enabled = connectionState != TvConnectionState.CONNECTING,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = portText,
+                            onValueChange = {
+                                portText = it
+                                pinnedFingerprint = null
+                            },
+                            label = { Text("Port") },
+                            enabled = connectionState != TvConnectionState.CONNECTING,
+                        )
+                        if (pinnedFingerprint != null) {
+                            Text(
+                                "Bu TV hatırlanıyor — bağlantı kimliği doğrulanmış (pinlenmiş) olarak kurulacak.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF4DD0E1),
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = pairingCode,
+                            onValueChange = { pairingCode = it },
+                            label = { Text("Eşleştirme kodu (TV'de gösterilen)") },
+                            enabled = connectionState != TvConnectionState.CONNECTING,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
                     }
-                    Text("— veya elle girin —", style = MaterialTheme.typography.bodySmall)
-                    Spacer(modifier = Modifier.height(8.dp))
+                    val statusText = when (connectionState) {
+                        TvConnectionState.DISCONNECTED -> "Bağlı değil."
+                        TvConnectionState.CONNECTING -> "Bağlanılıyor…"
+                        TvConnectionState.CONNECTED -> "Bağlandı ✓ — çeviriler artık TV'ye de gönderiliyor."
+                        TvConnectionState.FAILED -> "Bağlanılamadı — IP/port/eşleştirme kodunu ve aynı ağda olduğunuzu kontrol edin."
+                    }
+                    Text(statusText)
                 }
-                OutlinedTextField(
-                    value = host,
-                    onValueChange = {
-                        host = it
-                        // Kullanıcı hatırlanan bir kaydı doldurduktan sonra
-                        // alanı elle değiştirirse, artık BAŞKA bir TV'ye
-                        // bağlanmayı deniyor olabilir — pinlenmiş fingerprint
-                        // o eski kayda ait kalmamalı.
-                        pinnedFingerprint = null
-                    },
-                    label = { Text("TV IP adresi (ör. 192.168.1.23)") },
-                    enabled = connectionState != TvConnectionState.CONNECTING,
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = portText,
-                    onValueChange = {
-                        portText = it
-                        pinnedFingerprint = null
-                    },
-                    label = { Text("Port") },
-                    enabled = connectionState != TvConnectionState.CONNECTING,
-                )
-                if (pinnedFingerprint != null) {
-                    Text(
-                        "Bu TV hatırlanıyor — bağlantı kimliği doğrulanmış (pinlenmiş) olarak kurulacak.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF4DD0E1),
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = pairingCode,
-                    onValueChange = { pairingCode = it },
-                    label = { Text("Eşleştirme kodu (TV'de gösterilen)") },
-                    enabled = connectionState != TvConnectionState.CONNECTING,
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                val statusText = when (connectionState) {
-                    TvConnectionState.DISCONNECTED -> "Bağlı değil."
-                    TvConnectionState.CONNECTING -> "Bağlanılıyor…"
-                    TvConnectionState.CONNECTED -> "Bağlandı ✓ — çeviriler artık TV'ye de gönderiliyor."
-                    TvConnectionState.FAILED -> "Bağlanılamadı — IP/port/eşleştirme kodunu ve aynı ağda olduğunuzu kontrol edin."
-                }
-                Text(statusText)
             }
         },
         confirmButton = {
