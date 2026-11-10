@@ -34,6 +34,14 @@ class CaptionPipeline(
     // G036: yük artınca (OCR+normalizasyon süresi uzadıkça) kare atlama
     // oranını kademeli artırır — bkz. AdaptiveFrameThrottle KDoc'u.
     private val frameThrottle: AdaptiveFrameThrottle = AdaptiveFrameThrottle(),
+    // G019/G073: çeviri cache anahtarına eklenen bir sürüm etiketi — oyun
+    // profili, terim sözlüğü veya (X6) aktif çeviri paketi değiştiğinde bu
+    // etiket de değişmeli, aksi halde eski bir sürümden gelen çeviri yeni
+    // sürüm aktifken de cache'te takılı kalabilir. Varsayılan boş dize: G019
+    // henüz tam uygulanmadığı için şu an yalnız X6 paket sürümünü kapsar;
+    // profil/sözlük sürümünü de kapsaması G019'un kendi görevidir (bu sınıf
+    // bunu iddia etmez — dürüstlük ilkesi).
+    private val cacheVersionTag: () -> String = { "" },
 ) {
     private var pendingCandidate: PendingCandidate? = null
     private var activeCue: Cue? = null
@@ -87,7 +95,8 @@ class CaptionPipeline(
         val current = activeCue
         val continuedCue = current?.takeIf { isStableMatch(it.originalText, text) }
 
-        val translated = translationCache.getOrPut(text) {
+        val cacheKey = "$text|${cacheVersionTag()}"
+        val translated = translationCache.getOrPut(cacheKey) {
             translator.translate(text, sourceLanguageCode, targetLanguageCode)
         }
 

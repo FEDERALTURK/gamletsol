@@ -178,4 +178,35 @@ class CaptionPipelineTest {
             recognizeCallCount < totalFrames,
         )
     }
+
+    @Test
+    fun `G019-G073 - changing the cache version tag forces a fresh translation instead of a stale cache hit`() = runTest {
+        // Aynı metin iki ayrı "oturumda" (örn. araya X6 paket sürümü
+        // değişikliği girmiş) görülüyor — cacheVersionTag değiştiği için
+        // ikinci seferde translator GERÇEKTEN tekrar çağrılmalı, eski
+        // cache'teki değer sessizce geri dönmemeli.
+        val recognizer = FakeTextRecognizer(
+            mutableListOf("Hello there", "Hello there", "Hello there", "Hello there"),
+        )
+        val translator = FakeTranslator()
+        val sink = RecordingSubtitleSink()
+        var versionTag = "pack-v1"
+        val p = CaptionPipeline(
+            frameSource = EmptyFrameSource(),
+            textRecognizer = recognizer,
+            translator = translator,
+            sinks = listOf(sink),
+            cueTtlMillis = 0L, // her cue hemen süresi dolsun, aynı metin yeniden "stabilize" edilsin
+            cacheVersionTag = { versionTag },
+        )
+
+        p.onFrame(testFrame(frameId = 1))
+        p.onFrame(testFrame(frameId = 2)) // ilk çeviri: cache'e "Hello there|pack-v1" ile yazılır
+
+        versionTag = "pack-v2"
+        p.onFrame(testFrame(frameId = 3))
+        p.onFrame(testFrame(frameId = 4)) // sürüm değişti: cache'te YENİ bir anahtar, tekrar çağrı gerekir
+
+        assertEquals("Sürüm etiketi değişince translator iki kez çağrılmalı", 2, translator.calls.size)
+    }
 }
