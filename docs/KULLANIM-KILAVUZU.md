@@ -1,5 +1,7 @@
 # GAMLETSOL — Kurulum ve Kullanım Kılavuzu
 
+*Son güncelleme: 2026-11-12 — sade varsayılan ekran, QR-öncelikli eşleştirme ve TV "Gelişmiş / Test modu" anlatımına göre güncellendi.*
+
 > Bu belge, GAMLETSOL'un ne olduğunu, nasıl çalıştığını, nasıl kurulacağını
 > ve nasıl kullanılacağını adım adım anlatır. Kod/mimari detayları için kök
 > [`README.md`](../README.md)'ye, yol haritasına
@@ -150,8 +152,27 @@ Telefonunuzda Google Play dışından bir APK kurmak için:
    izin verin (bu, kullandığınız dosya yöneticisi/tarayıcı uygulamasına
    özeldir, yalnızca bir kez sorulur).
 4. "Yükle"ye dokunun. Kurulum bitince "GAMLETSOL" uygulamasını açın.
-5. Uygulama kamera izni isteyecektir (altyazıyı okumak için zorunludur)
+5. İlk açılışta kısa bir **tanıtım** (3 sayfa) gösterilir — "İleri" ile
+   geçin veya "Atla"ya dokunun. (Sonradan menü (⋮) → **"Tanıtımı yeniden
+   göster"** ile tekrar açabilirsiniz.)
+6. Uygulama kamera izni isteyecektir (altyazıyı okumak için zorunludur)
    — izin verin.
+7. **İlk kullanımda telefon Wi-Fi'ye bağlı olsun:** cihaz-üstü çeviri
+   modeli ilk açılışta bir kez indirilir. İndikten sonra çeviri internetsiz
+   çalışır.
+
+### Telefonda günlük kullanım
+
+1. Oyun/film/dizi ayarlarından **İngilizce altyazıyı açın**.
+2. Telefonu, altyazının göründüğü ekranı **net ve sabit** görecek şekilde
+   tutun (mümkünse bir stand/tripod kullanın).
+3. Altyazı birkaç kare boyunca net okununca, Türkçe çevirisi telefon
+   ekranının altında belirir ve **sesli okunur** (Android'in Türkçe metin
+   okuma sesi kullanılır; telefonda Türkçe ses kurulu değilse üstteki
+   durum bilgisinde bununla ilgili bir uyarı görürsünüz).
+4. Sağ üstteki **menü (⋮)** şunları içerir: **"TV'ye Yansıt"**,
+   **"Kurulum talimatları"**, **"Gizlilik ve nasıl çalışır"**,
+   **"Tanıtımı yeniden göster"**, **"Hakkında / yol haritası durumu"**.
 
 ## 6. Kurulum — Android TV / Google TV (app-tv)
 
@@ -179,26 +200,38 @@ kullanmaktır:
 
 ## 7. İlk eşleştirme — TV'ye bağlanma
 
-1. **TV tarafında** "GAMLETSOL" uygulamasını açın. Ekranda:
-   - TV'nin yerel IP adresi ve port numarası,
-   - 60 saniye geçerli, tek kullanımlık bir **eşleştirme kodu**,
-   - aynı bilgiyi taşıyan bir **QR kod**
-   görünür.
-2. **Telefon tarafında** GAMLETSOL'u açın, kamerayı ekrana doğrultmaya
-   başlayın (ana ekran) ve **"TV'ye Yansıt"** düğmesine dokunun.
-3. Açılan diyalogda üç yol vardır:
-   - **Otomatik keşif (NSD):** Telefon ve TV aynı Wi-Fi ağındaysa, TV
-     listede otomatik görünür — dokunup seçin.
-   - **QR tara:** Kamerayla TV ekranındaki QR kodu okutun — IP/port/kod
-     otomatik doldurulur.
-   - **Elle gir:** IP adresini, portu ve TV ekranındaki GÜNCEL eşleştirme
-     kodunu kendiniz yazın (NSD/QR çalışmazsa yedek yol).
-4. "Bağlan"a dokunun. Bağlantı başarılı olursa TV ekranında telefon
-   tarafından gönderilen altyazılar görünmeye başlar.
+En kolay yol **QR ile taramaktır** — üç adım:
+
+1. **TV'de** "GAMLETSOL" uygulamasını açın. Ekranda **"GAMLETSOL'a
+   bağlanın"** başlığı, kısa bir yönerge, büyük bir **QR kod** ve kodun
+   kalan süresi (60 saniye) görünür.
+2. **Telefonda** GAMLETSOL'u açın → sağ üstteki **menü (⋮)** →
+   **"TV'ye Yansıt"** → **"QR ile tara"**.
+3. Telefonun kamerasını TV'deki QR koda tutun. Kod okununca bağlantı
+   kendiliğinden kurulur; TV'deki QR ekranı kaybolur ve telefonun
+   okuduğu altyazıların çevirisi TV'de görünmeye başlar.
+
+> QR kodun süresi dolarsa TV'deki **"Yeni eşleştirme kodu oluştur"**
+> düğmesine basın ve yeni QR'ı okutun.
+
+**Diyalogda ayrıca şunlar görünebilir** (yalnızca varsa):
+
+- **Hatırlanan TV'ler** — daha önce bağlandığınız TV'ler (bkz. bölüm 9).
+- **Yakındaki TV'ler** — aynı Wi-Fi ağında otomatik bulunan (NSD) TV'ler;
+  dokunarak seçebilirsiniz.
+
+**QR okunmuyorsa — elle giriş (yedek yol):**
+
+1. Telefondaki diyalogda **"QR okunmuyor mu? Elle gir"**e dokunun; IP,
+   port ve eşleştirme kodu alanları açılır.
+2. TV'nin IP adresi ve portu varsayılan ekranda **gösterilmez**. Görmek
+   için TV'de sağ üstteki **"Gelişmiş / Test modu"** düğmesine basın;
+   "Telefondan bağlan (manuel): IP:port" satırı belirir.
+3. IP'yi, portu ve TV'deki **güncel** eşleştirme kodunu girip "Bağlan"a
+   dokunun.
 
 > Eşleştirme kodu 60 saniye içinde kullanılmazsa veya yanlış girilirse
-> bağlantı reddedilir — TV ekranındaki kodu/QR'ı yeniden okuyun ya da TV
-> uygulamasını kapatıp yeniden açarak yeni bir kod üretin.
+> bağlantı reddedilir — yeni kod oluşturup tekrar deneyin.
 
 **Güvenlik notu:** QR tarama ve otomatik keşif (NSD) yolları, TV'nin TLS
 sertifika "fingerprint"ini de taşır ve telefon bu TAM fingerprint'i
@@ -209,8 +242,9 @@ TV" gibi davranıp araya giremez. Elle giriş yolu bu korumayı **sağlamaz**
 
 ## 8. Altyazı görüntüleme ayarları (TV tarafı)
 
-TV ekranında, kumandanızla (D-pad) gezinip **"Yazı ayarları"** düğmesine
-basarak bir panel açabilirsiniz. Buradan:
+TV ekranının **sağ üst köşesindeki "Yazı ayarları"** düğmesine kumandanızla
+(D-pad) gidip basarak bir panel açabilirsiniz ("Yazı ayarlarını gizle" ile
+kapanır). Buradan:
 
 - **Font boyutu** büyütülüp küçültülebilir,
 - Altyazının ekranda **üstte veya altta** gösterilmesi seçilebilir,
@@ -223,17 +257,27 @@ basarak bir panel açabilirsiniz. Buradan:
 Bu ayarlar TV'de kalıcı olarak saklanır (uygulama yeniden açıldığında
 korunur).
 
+### Gelişmiş / Test modu (TV)
+
+Sağ üstteki ikinci düğme olan **"Gelişmiş / Test modu"**, normal kullanımda
+gerekmeyen teknik bilgileri gösterir: TV'nin IP:port'u (elle bağlanmak
+için), otomatik keşif durumu, algılanan HDMI girişleri ve canlı HDMI
+görüntüsü denemesi. Açıkken düğme sarı renkte **"Test modu: AÇIK"** yazar;
+tekrar basınca kapanır. Varsayılan: **kapalı**. Bu mod esas olarak donanım
+testleri içindir (bkz. `docs/testing/P0-DONANIM-TEST-REHBERI.md`).
+
 ## 9. "Bu TV'yi hatırla" ve yeniden bağlanma
 
-QR tarayarak veya otomatik keşifle (NSD) bir TV'ye bağlandığınızda,
-telefon tarafındaki eşleştirme diyaloğunda **"Yeni TV'leri hatırla"**
-anahtarı görürsünüz (varsayılan: açık). Açıkken, bağlandığınız TV
-otomatik olarak **"Hatırlanan TV'ler"** listesine eklenir.
+QR tarayarak veya otomatik keşifle (NSD) bir TV'ye bağlandığınızda, TV
+varsayılan olarak otomatik şekilde **"Hatırlanan TV'ler"** listesine
+eklenir. Bunu kapatmak isterseniz, diyalogda **"QR okunmuyor mu? Elle
+gir"**i açınca görünen **"Yeni TV'leri hatırla"** anahtarını kapatın
+(varsayılan: açık).
 
 Bir dahaki sefer "TV'ye Yansıt"ı açtığınızda:
 
-- "Hatırlanan TV'ler" listesinde o TV'yi görür, **"Bağlan"**a
-  dokunursunuz — host/port otomatik doldurulur VE TV'nin pinlenmiş
+- "Hatırlanan TV'ler" listesinde o TV'ye dokunursunuz — host/port
+  otomatik doldurulur, giriş alanları açılır VE TV'nin pinlenmiş
   fingerprint'i yeniden kullanılır (güvenlik seviyesi düşmez).
 - Yine de TV ekranındaki **GÜNCEL** (o anki, tek kullanımlık) eşleştirme
   kodunu girmeniz gerekir — kod güvenliği her bağlantıda yeniden
@@ -258,6 +302,10 @@ kaybedersiniz.)
 |---|---|
 | TV listede görünmüyor (otomatik keşif) | Telefon ve TV aynı Wi-Fi ağında olmalı; bazı router'larda mDNS/NSD kapalıdır — QR tarayın veya elle girin. |
 | QR okunmuyor | Ekran parlaklığını artırın, telefonu TV ekranına biraz yaklaştırın/açıyı değiştirin; elle giriş yedek yoldur. |
+| Elle giriş için TV'nin IP'sini göremiyorum | IP:port varsayılan ekranda gizlidir — TV'de sağ üstteki "Gelişmiş / Test modu"nu açın. |
+| TV ekranında çok fazla teknik yazı var | "Test modu: AÇIK" yazıyorsa düğmeye tekrar basıp kapatın. |
+| Çeviri gelmiyor, ilk açılış | Çeviri modeli ilk kullanımda indirilir — telefon Wi-Fi'ye bağlı olsun ve birkaç dakika bekleyin. |
+| Çeviri sesli okunmuyor | Telefonun ayarlarında Türkçe metin okuma (TTS) sesinin kurulu olduğunu kontrol edin. |
 | "Eşleştirme kodu geçersiz/süresi geçti" | Kod 60 saniye geçerlidir — TV ekranındaki GÜNCEL kodu yeniden okuyun/girin. |
 | Bağlantı kuruluyor ama altyazı gelmiyor | Telefonda kamera doğru şekilde ekrana yönlendirilmiş mi ve İngilizce altyazı ekranda GÖRÜNÜYOR mu kontrol edin — OCR, görünmeyen bir yazıyı okuyamaz. |
 | Bağlantı aniden kesildi, yeniden bağlanmıyor | Otomatik yeniden bağlanma şu an YOK (bkz. Bilinen sınırlar) — "TV'ye Yansıt"ı tekrar açıp yeniden bağlanın. |
@@ -278,7 +326,14 @@ itibariyle **henüz yapılmamış/doğrulanmamış** olanlar:
 - **Samsung Tizen / LG webOS TV uygulamaları yok** — şu an yalnızca
   Android TV/Google TV desteklenir.
 - **Akıllı Ekran (menü/envanter/görev çevirisi, Pro katman) yok.**
-- **Türkçe seslendirme (karakter dublajı veya TTS) yok.**
+- **Karakter dublajı yok:** Çeviri yalnızca telefonun standart Türkçe
+  metin okuma (TTS) sesiyle okunur; oyun karakterlerine özel Türkçe
+  seslendirme yok.
+- **Oyun profili seçimi arayüzde yok:** Oyun türüne göre terim koruma
+  altyapısı kodda var ama uygulamada henüz bir seçim ekranı yok.
+- **Oyuna özel hazır çeviri paketleri yok:** Altyapısı kodda başladı
+  (yol haritası G073), ancak henüz hiçbir oyun için paket üretilmedi;
+  tüm çeviriler canlı (cihaz-üstü) yapılır.
 - **Otomatik yeniden bağlanma yok** — bağlantı koptuğunda "TV'ye
   Yansıt"ı elle yeniden açmanız gerekir.
 - **Ücretli/Pro katman ayrımı henüz uygulanmadı** — tüm özellikler şu an
