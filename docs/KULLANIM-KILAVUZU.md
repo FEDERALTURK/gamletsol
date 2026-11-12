@@ -222,7 +222,7 @@ En kolay yol **QR ile taramaktır** — üç adım:
 
 **QR okunmuyorsa — elle giriş (yedek yol):**
 
-1. Telefondaki diyalogda **"QR okunmuyor mu? Elle gir"**e dokunun; IP,
+1. Telefondaki diyalogda **"QR okunmuyor mu? Elle gir"** seçeneğine dokunun; IP,
    port ve eşleştirme kodu alanları açılır.
 2. TV'nin IP adresi ve portu varsayılan ekranda **gösterilmez**. Görmek
    için TV'de sağ üstteki **"Gelişmiş / Test modu"** düğmesine basın;
@@ -271,7 +271,7 @@ testleri içindir (bkz. `docs/testing/P0-DONANIM-TEST-REHBERI.md`).
 QR tarayarak veya otomatik keşifle (NSD) bir TV'ye bağlandığınızda, TV
 varsayılan olarak otomatik şekilde **"Hatırlanan TV'ler"** listesine
 eklenir. Bunu kapatmak isterseniz, diyalogda **"QR okunmuyor mu? Elle
-gir"**i açınca görünen **"Yeni TV'leri hatırla"** anahtarını kapatın
+gir"** seçeneğini açınca görünen **"Yeni TV'leri hatırla"** anahtarını kapatın
 (varsayılan: açık).
 
 Bir dahaki sefer "TV'ye Yansıt"ı açtığınızda:
