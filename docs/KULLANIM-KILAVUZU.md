@@ -114,13 +114,21 @@ Adım adım:
 
 ### 4a. GitHub Release'inden (önerilen — en kolay, kalıcı bağlantı)
 
-Depo, `main` dalındaki en güncel kodun APK'larını otomatik olarak
-**[Releases](https://github.com/FEDERALTURK/gamletsol/releases/tag/latest)**
-sayfasında yayınlar (her `main` push'unda güncellenir). Oradan şu iki
-dosyayı indirin:
+**Kararlı sürüm (önerilen):** En son yayınlanan sürüm her zaman
+**[Releases → Latest](https://github.com/FEDERALTURK/gamletsol/releases/latest)**
+sayfasındadır (şu an **v0.3.0**). Oradan şu iki dosyayı indirin:
 
-- `app-mobile-debug.apk` — telefona kurulacak.
-- `app-tv-debug.apk` — Android TV/Google TV'ye kurulacak.
+- `gamletsol-telefon-v0.3.0.apk` — telefona kurulacak.
+- `gamletsol-tv-v0.3.0.apk` — Android TV/Google TV'ye kurulacak.
+
+Sürüm notları (neler değişti, bilinen sınırlar) aynı sayfada ve
+[`docs/releases/`](https://github.com/FEDERALTURK/gamletsol/tree/main/docs/releases)
+klasöründedir. **Telefon ve TV uygulamasını her zaman aynı sürümle kurun.**
+
+**En yeni geliştirme derlemesi:** `main` dalındaki en güncel kodun APK'ları
+ayrıca [`latest` ön sürümünde](https://github.com/FEDERALTURK/gamletsol/releases/tag/latest)
+yayınlanır (her `main` push'unda güncellenir; `app-mobile-debug.apk` ve
+`app-tv-debug.apk`). Henüz sürüm notu yazılmamış değişiklikleri içerebilir.
 
 > **Not:** Bunlar **debug** (imzasız/debug-signed) derlemelerdir — Google
 > Play'den indirilen bir uygulama gibi "release-signed" değildir. Bu, bir
