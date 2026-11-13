@@ -116,10 +116,14 @@ Adım adım:
 
 **Kararlı sürüm (önerilen):** En son yayınlanan sürüm her zaman
 **[Releases → Latest](https://github.com/FEDERALTURK/gamletsol/releases/latest)**
-sayfasındadır (şu an **v0.3.0**). Oradan şu iki dosyayı indirin:
+sayfasındadır. Oradan şu iki dosyayı indirin (`vX.Y.Z` sürüm numarasıdır,
+ör. `v0.3.0`):
 
-- `gamletsol-telefon-v0.3.0.apk` — telefona kurulacak.
-- `gamletsol-tv-v0.3.0.apk` — Android TV/Google TV'ye kurulacak.
+- `gamletsol-telefon-vX.Y.Z.apk` — telefona kurulacak.
+- `gamletsol-tv-vX.Y.Z.apk` — Android TV/Google TV'ye kurulacak.
+
+Henüz sürümlü bir yayın yoksa bu sayfa boş açılır; o durumda aşağıdaki
+"en yeni geliştirme derlemesi"ni kullanın.
 
 Sürüm notları (neler değişti, bilinen sınırlar) aynı sayfada ve
 [`docs/releases/`](https://github.com/FEDERALTURK/gamletsol/tree/main/docs/releases)
