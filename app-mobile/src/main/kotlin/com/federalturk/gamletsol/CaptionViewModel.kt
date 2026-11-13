@@ -69,7 +69,13 @@ class CaptionViewModel(application: Application) : AndroidViewModel(application)
     val pipelineStatus: StateFlow<PipelineStatus> = _pipelineStatus.asStateFlow()
 
     val subtitleSink = PhoneScreenSubtitleSink()
-    private val tvRelaySink = TvRelaySubtitleSink()
+
+    // Gönderim başarısız olursa (TV kapandı, Wi-Fi koptu) arayüz artık
+    // "Bağlı" demeye devam etmiyor — önceden sink sessizce bağlantıyı
+    // bırakıyor, ekranda ise "TV'ye bağlı" yazmaya devam ediyordu.
+    private val tvRelaySink = TvRelaySubtitleSink(
+        onConnectionLost = { _tvConnectionState.value = TvConnectionState.FAILED },
+    )
 
     private val _tvConnectionState = MutableStateFlow(TvConnectionState.DISCONNECTED)
     val tvConnectionState: StateFlow<TvConnectionState> = _tvConnectionState.asStateFlow()
@@ -196,30 +202,61 @@ class CaptionViewModel(application: Application) : AndroidViewModel(application)
         if (pipelineStarted) return
         pipelineStarted = true
 
+        // 2026-11-13 hata düzeltmeleri:
+        // 1) Hat artık model indirmesini BEKLEMEDEN hemen kareleri dinlemeye
+        //    başlar (eskiden bekleme sırasında gelen ilk kare kamera analizini
+        //    donduruyordu — bkz. CameraXFrameSource KDoc'u). Model hazır
+        //    değilken çeviri hatası hattı durdurmaz, o kare atlanır.
+        // 2) Hat ana (UI) iş parçacığında değil Dispatchers.Default'ta çalışır:
+        //    Levenshtein/OCR sonrası işler arayüzü yavaşlatmaz, TV'ye gönderim
+        //    ana iş parçacığında ağ erişimi yasağına (NetworkOnMainThread)
+        //    takılmaz.
+        // 3) Model indirmesi başarısız olursa (Wi-Fi yok vb.) artık bir kez
+        //    deneyip vazgeçilmez; arka planda periyodik olarak yeniden denenir.
         viewModelScope.launch {
-            _pipelineStatus.value = PipelineStatus.DOWNLOADING_TRANSLATION_MODEL
-            val modelResult = runCatching { rawTranslator.ensureModelDownloaded() }
-            // NOT (dürüstlük ilkesi): Model indirme başarısız olsa bile
-            // (ör. Wi-Fi yok) pipeline yine başlatılıyor — ML Kit modeli
-            // hazır olana kadar sonraki `translate()` çağrıları askıda
-            // kalabilir/hata verebilir. `MODEL_DOWNLOAD_FAILED` durumu
-            // kullanıcıya gösteriliyor (bkz. CaptionScreen) ama otomatik
-            // yeniden deneme YOK — bu hâlâ P2/P4 kapsamında ele alınacak.
-            _pipelineStatus.value = if (modelResult.isSuccess) {
-                PipelineStatus.SCANNING
-            } else {
-                PipelineStatus.MODEL_DOWNLOAD_FAILED
-            }
+            ensureTranslationModelWithRetry()
+        }
 
+        viewModelScope.launch(Dispatchers.Default) {
             val pipeline = CaptionPipeline(
                 frameSource = frameSource,
                 textRecognizer = MlKitTextRecognizer(),
                 translator = translator,
                 sinks = listOf(subtitleSink, tvRelaySink),
                 speechOutput = speechOutput,
+                onTranslationError = {
+                    // Model henüz inmediyse kullanıcıya bunu göster; aksi halde
+                    // tek seferlik geçici hata — sonraki karede yeniden denenir.
+                    if (_pipelineStatus.value == PipelineStatus.SCANNING && !modelReady) {
+                        _pipelineStatus.value = PipelineStatus.DOWNLOADING_TRANSLATION_MODEL
+                    }
+                },
             )
             pipeline.run()
         }
+    }
+
+    @Volatile
+    private var modelReady = false
+
+    private suspend fun ensureTranslationModelWithRetry() {
+        _pipelineStatus.value = PipelineStatus.DOWNLOADING_TRANSLATION_MODEL
+        while (true) {
+            val result = runCatching { rawTranslator.ensureModelDownloaded() }
+            if (result.isSuccess) {
+                modelReady = true
+                _pipelineStatus.value = PipelineStatus.SCANNING
+                return
+            }
+            if (result.exceptionOrNull() is kotlinx.coroutines.CancellationException) return
+            _pipelineStatus.value = PipelineStatus.MODEL_DOWNLOAD_FAILED
+            delay(MODEL_DOWNLOAD_RETRY_MILLIS)
+        }
+    }
+
+    private companion object {
+        /** Model indirme yeniden deneme aralığı (varsayım, ölçüm değil). */
+        const val MODEL_DOWNLOAD_RETRY_MILLIS = 15_000L
     }
 
     override fun onCleared() {

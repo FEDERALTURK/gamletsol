@@ -2,6 +2,7 @@ package com.federalturk.gamletsol.ocr
 
 import androidx.camera.core.ExperimentalGetImage
 import com.federalturk.gamletsol.core.model.TextRegion
+import com.federalturk.gamletsol.core.pipeline.OcrGeometry
 import com.federalturk.gamletsol.core.pipeline.RawImage
 import com.federalturk.gamletsol.core.pipeline.RecognizedText
 import com.federalturk.gamletsol.core.pipeline.TextRecognizer
@@ -24,6 +25,15 @@ import kotlinx.coroutines.suspendCancellableCoroutine
  * basit ve doğru sonuç verir ama yol haritasındaki "ROI kırpma → OCR"
  * sırasından daha pahalıdır (her karede tüm ekran taranır). Gerçek cihazda
  * ölçüm sonrası gerekirse bitmap düzeyinde önceden kırpmaya geçilebilir.
+ *
+ * 2026-11-13 hata düzeltmesi: ML Kit blok kutularını DİK (döndürülmüş)
+ * görüntü koordinatlarında verir, `InputImage.width/height` ise ham sensör
+ * boyutudur. Uygulama dikey kilitli olduğu için kare neredeyse her zaman 90°
+ * döner; eski kod kutuları ham boyuta böldüğü için altyazı bandı yanlış
+ * şeride kayıyor, altyazı kadrajda biraz aşağıdaysa hiç okunmuyordu. Artık
+ * [OcrGeometry.uprightSize] ile doğru boyut kullanılıyor. Ayrıca bloklar
+ * okuma sırasına diziliyor (ML Kit sırayı garanti etmez; sıra kareden kareye
+ * değişirse iki-kare kararlılık testi geçilemiyordu).
  */
 class MlKitTextRecognizer : TextRecognizer {
 
@@ -45,33 +55,32 @@ class MlKitTextRecognizer : TextRecognizer {
 
         val visionText = try {
             recognizer.awaitResult(inputImage)
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
         } catch (t: Throwable) {
+            // Tek karelik OCR hatası (bulanıklık vb.) — boş kare say, hat devam eder.
             return null
         }
 
-        val imageWidth = inputImage.width.toFloat()
-        val imageHeight = inputImage.height.toFloat()
-        if (imageWidth <= 0f || imageHeight <= 0f) return null
+        val (uprightWidth, uprightHeight) = OcrGeometry.uprightSize(
+            rawWidth = inputImage.width,
+            rawHeight = inputImage.height,
+            rotationDegrees = inputImage.rotationDegrees,
+        )
+        if (uprightWidth <= 0 || uprightHeight <= 0) return null
 
-        val regionText = visionText.textBlocks
-            .asSequence()
-            .filter { block -> block.boundingBox?.let { box -> isInsideRegion(box, imageWidth, imageHeight, region) } == true }
-            .joinToString(separator = "\n") { it.text }
+        val blocksInRegion = visionText.textBlocks.mapNotNull { block ->
+            val rect = block.boundingBox ?: return@mapNotNull null
+            val box = OcrGeometry.Box(rect.left, rect.top, rect.right, rect.bottom)
+            if (OcrGeometry.isCenterInside(box, uprightWidth, uprightHeight, region)) block to box else null
+        }
+
+        val regionText = OcrGeometry.readingOrder(blocksInRegion) { it.second }
+            .joinToString(separator = "\n") { it.first.text }
             .trim()
 
         if (regionText.isEmpty()) return null
         return RecognizedText(text = regionText)
-    }
-
-    private fun isInsideRegion(
-        box: android.graphics.Rect,
-        imageWidth: Float,
-        imageHeight: Float,
-        region: TextRegion,
-    ): Boolean {
-        val centerXNorm = (box.left + box.right) / 2f / imageWidth
-        val centerYNorm = (box.top + box.bottom) / 2f / imageHeight
-        return centerXNorm in region.left..region.right && centerYNorm in region.top..region.bottom
     }
 }
 

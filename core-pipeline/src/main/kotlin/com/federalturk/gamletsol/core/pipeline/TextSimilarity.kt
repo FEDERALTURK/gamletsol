@@ -17,20 +17,26 @@ object TextSimilarity {
         return 1f - distance.toFloat() / maxLen
     }
 
+    // İki satırlı DP: O(n·m) zaman, O(min(n, m)) bellek. Her karede çağrıldığı
+    // için (n+1)×(m+1) tablo ayırmak yerine iki dizi yeniden kullanılır.
     private fun levenshteinDistance(a: String, b: String): Int {
-        val dp = Array(a.length + 1) { IntArray(b.length + 1) }
-        for (i in 0..a.length) dp[i][0] = i
-        for (j in 0..b.length) dp[0][j] = j
-        for (i in 1..a.length) {
-            for (j in 1..b.length) {
-                val substitutionCost = if (a[i - 1] == b[j - 1]) 0 else 1
-                dp[i][j] = minOf(
-                    dp[i - 1][j] + 1, // silme
-                    dp[i][j - 1] + 1, // ekleme
-                    dp[i - 1][j - 1] + substitutionCost, // değiştirme
+        val (longer, shorter) = if (a.length >= b.length) a to b else b to a
+        var previous = IntArray(shorter.length + 1) { it }
+        var current = IntArray(shorter.length + 1)
+        for (i in 1..longer.length) {
+            current[0] = i
+            for (j in 1..shorter.length) {
+                val substitutionCost = if (longer[i - 1] == shorter[j - 1]) 0 else 1
+                current[j] = minOf(
+                    previous[j] + 1, // silme
+                    current[j - 1] + 1, // ekleme
+                    previous[j - 1] + substitutionCost, // değiştirme
                 )
             }
+            val swap = previous
+            previous = current
+            current = swap
         }
-        return dp[a.length][b.length]
+        return previous[shorter.length]
     }
 }

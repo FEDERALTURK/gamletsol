@@ -44,9 +44,25 @@ class TermPreservingTranslator(
 
         val translatedMasked = delegate.translate(masked, sourceLanguageCode, targetLanguageCode)
 
-        var restored = translatedMasked
-        replacements.forEachIndexed { index, value ->
-            restored = restored.replace(placeholder(index), value)
+        // 2026-11-13: Çeviri motoru yer tutucuyu bozabilir (ör. "§0§" →
+        // "§ 0 §" ya da tamamen düşürme). Eskiden bu durumda ekrana "§ 0 §"
+        // gibi anlamsız parçalar çıkıyor veya sayı kayboluyordu. Artık
+        // boşluklara toleranslı geri yükleme yapılır; bir yer tutucu hiç
+        // bulunamazsa maskesiz metin doğrudan çevrilir (terim koruması o satır
+        // için kaybolur ama çeviri bozuk çıkmaz).
+        val restoredIndices = mutableSetOf<Int>()
+        val restored = TOLERANT_PLACEHOLDER.replace(translatedMasked) { match ->
+            val index = match.groupValues[1].toIntOrNull()
+            val value = index?.let { replacements.getOrNull(it) }
+            if (value != null) {
+                restoredIndices += index
+                value
+            } else {
+                match.value
+            }
+        }
+        if (restoredIndices.size != replacements.size || restored.contains('§')) {
+            return delegate.translate(text, sourceLanguageCode, targetLanguageCode)
         }
         return restored
     }
@@ -67,5 +83,6 @@ class TermPreservingTranslator(
 
     companion object {
         private const val NUMBER_PATTERN = "\\d+"
+        private val TOLERANT_PLACEHOLDER = Regex("§\\s*(\\d+)\\s*§")
     }
 }

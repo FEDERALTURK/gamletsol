@@ -81,4 +81,34 @@ class TermPreservingTranslatorTest {
         assertEquals("TR:The door is locked", result)
         assertEquals(listOf("The door is locked"), delegate.calls)
     }
+
+    private class ScriptedTranslator(private val transform: (String) -> String) : Translator {
+        val calls = mutableListOf<String>()
+        override suspend fun translate(text: String, sourceLanguageCode: String, targetLanguageCode: String): String {
+            calls += text
+            return transform(text)
+        }
+    }
+
+    @Test
+    fun `placeholders mangled with spaces by the engine are still restored`() = runTest {
+        val delegate = ScriptedTranslator { it.replace("§0§", "§ 0 §") }
+        val translator = TermPreservingTranslator(delegate) { null }
+
+        val result = translator.translate("You have 25 arrows", "en", "tr")
+
+        assertEquals("You have 25 arrows", result)
+        assertEquals(1, delegate.calls.size)
+    }
+
+    @Test
+    fun `a dropped placeholder falls back to translating the unmasked text instead of losing the number`() = runTest {
+        val delegate = ScriptedTranslator { it.replace("§0§", "") }
+        val translator = TermPreservingTranslator(delegate) { null }
+
+        val result = translator.translate("You have 25 arrows", "en", "tr")
+
+        assertEquals("You have 25 arrows", result)
+        assertEquals(listOf("You have §0§ arrows", "You have 25 arrows"), delegate.calls)
+    }
 }

@@ -6,6 +6,8 @@ import com.federalturk.gamletsol.core.transport.CueEvent
 import com.federalturk.gamletsol.core.transport.SocketTvReceiverAdapter
 import com.federalturk.gamletsol.core.transport.TvEventClient
 import com.federalturk.gamletsol.core.transport.TvReceiverAdapter
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 /**
  * [SubtitleSink] uygulaması — her yeni cue'yu, kullanıcının bağlandığı TV'ye
@@ -26,8 +28,30 @@ import com.federalturk.gamletsol.core.transport.TvReceiverAdapter
  * YOK — [show] gönderim başarısız olursa bağlantıyı null'a çeker ve
  * [isConnected] `false` döner; kullanıcı menüden yeniden bağlanmalıdır.
  * Gerçek bir telefon↔TV çiftinde, gerçek bir Wi-Fi ağında HENÜZ denenmedi.
+ *
+ * 2026-11-13 hata düzeltmeleri:
+ * - Gönderim artık çağıranın iş parçacığında değil, bu sınıfa ait tek bir
+ *   arka plan iş parçacığında yapılır. Eskiden hat ana iş parçacığında
+ *   çalıştığı için soket yazımı Android'in ana-iş-parçacığında-ağ yasağına
+ *   takılıyor, `send` sessizce `false` dönüyor ve ilk altyazıda bağlantı
+ *   düşürülüyordu (arayüz ise "bağlı" demeye devam ediyordu). Yavaş bir
+ *   Wi-Fi'de de OCR/çeviri hattı artık ağ gönderimini beklemez.
+ * - Aynı cue'nun içeriği değişmemiş yenilemeleri (TTL tazeleme, saniyede
+ *   birkaç kez) TV'ye tekrar tekrar gönderilmez; yalnız yeni cue veya yeni
+ *   revizyon gönderilir.
+ * - Bağlantı koparsa [onConnectionLost] çağrılır (arayüz durumu güncellenir).
  */
-class TvRelaySubtitleSink : SubtitleSink {
+class TvRelaySubtitleSink(
+    private val onConnectionLost: () -> Unit = {},
+) : SubtitleSink {
+
+    private val sendExecutor: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "gamletsol-tv-send").apply { isDaemon = true }
+    }
+
+    @Volatile
+    private var lastSentKey: String? = null
+
     @Volatile
     private var adapter: TvReceiverAdapter? = null
 
@@ -56,6 +80,7 @@ class TvRelaySubtitleSink : SubtitleSink {
         expectedFingerprintSha256: String? = null,
     ): Boolean {
         disconnect()
+        lastSentKey = null
         val newClient = TvEventClient.connect(
             host,
             port,
@@ -66,23 +91,44 @@ class TvRelaySubtitleSink : SubtitleSink {
         return true
     }
 
+    /**
+     * Bağlantıyı bırakır. Soketin kapatılması (TLS kapanış mesajı ağa
+     * yazılabilir) ana iş parçacığında yapılmasın diye gönderim iş
+     * parçacığına devredilir; bu fonksiyon hemen döner.
+     */
     fun disconnect() {
-        adapter?.disconnect()
+        val previous = adapter ?: return
         adapter = null
+        lastSentKey = null
+        sendExecutor.execute { previous.disconnect() }
     }
 
     override fun show(cue: Cue) {
         val translated = cue.translatedText
         if (translated.isNullOrBlank()) return
         val current = adapter ?: return
+
+        val key = "${cue.cueId}#${cue.revision}"
+        if (key == lastSentKey) return // içerik aynı, yalnız TTL tazelendi
+        lastSentKey = key
+
         val event = CueEvent(
             originalText = cue.originalText,
             translatedText = translated,
             timestampMs = cue.createdAtMillis,
         )
-        if (!current.sendSubtitle(event)) {
-            // Gönderim başarısız oldu — bağlantı kopmuş olabilir, temizle.
-            adapter = null
+        sendExecutor.execute {
+            // Bu arada kullanıcı bağlantıyı kesmiş/yenilemiş olabilir.
+            if (adapter !== current) return@execute
+            if (!current.sendSubtitle(event)) {
+                // Gönderim başarısız oldu — bağlantı kopmuş olabilir, temizle.
+                if (adapter === current) {
+                    adapter = null
+                    lastSentKey = null
+                    current.disconnect()
+                    onConnectionLost()
+                }
+            }
         }
     }
 

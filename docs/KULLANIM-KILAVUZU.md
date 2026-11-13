@@ -1,6 +1,6 @@
 # GAMLETSOL — Kurulum ve Kullanım Kılavuzu
 
-*Son güncelleme: 2026-11-12 — sade varsayılan ekran, QR-öncelikli eşleştirme ve TV "Gelişmiş / Test modu" anlatımına göre güncellendi.*
+*Son güncelleme: 2026-11-13 — altyazı çerçevesi (OCR bandı), çevirinin ekranın üstünde gösterilmesi ve yeni sorun giderme satırları eklendi.*
 
 > Bu belge, GAMLETSOL'un ne olduğunu, nasıl çalıştığını, nasıl kurulacağını
 > ve nasıl kullanılacağını adım adım anlatır. Kod/mimari detayları için kök
@@ -166,11 +166,17 @@ Telefonunuzda Google Play dışından bir APK kurmak için:
 1. Oyun/film/dizi ayarlarından **İngilizce altyazıyı açın**.
 2. Telefonu, altyazının göründüğü ekranı **net ve sabit** görecek şekilde
    tutun (mümkünse bir stand/tripod kullanın).
-3. Altyazı birkaç kare boyunca net okununca, Türkçe çevirisi telefon
-   ekranının altında belirir ve **sesli okunur** (Android'in Türkçe metin
-   okuma sesi kullanılır; telefonda Türkçe ses kurulu değilse üstteki
-   durum bilgisinde bununla ilgili bir uyarı görürsünüz).
-4. Sağ üstteki **menü (⋮)** şunları içerir: **"TV'ye Yansıt"**,
+3. Kamera görüntüsünün alt kısmında beyaz bir çerçeve ve **"Altyazıyı bu
+   çerçeveye getirin"** yazısı görürsünüz. Uygulama yalnızca **bu çerçevenin
+   içindeki** yazıyı okur — telefonu, TV'deki altyazı satırı çerçevenin
+   içine düşecek şekilde konumlandırın. Altyazı çerçevenin dışında kalırsa
+   çeviri gelmez.
+4. Altyazı birkaç kare boyunca net okununca, Türkçe çevirisi telefon
+   ekranının **üst kısmında** belirir ve **sesli okunur** (Android'in Türkçe
+   metin okuma sesi kullanılır; telefonda Türkçe ses kurulu değilse bununla
+   ilgili bir uyarı görürsünüz). Altyazı satırı ekranda uzarsa (harf harf
+   yazılan altyazılar) çeviri de güncellenir.
+5. Sağ üstteki **menü (⋮)** şunları içerir: **"TV'ye Yansıt"**,
    **"Kurulum talimatları"**, **"Gizlilik ve nasıl çalışır"**,
    **"Tanıtımı yeniden göster"**, **"Hakkında / yol haritası durumu"**.
 
@@ -304,7 +310,9 @@ kaybedersiniz.)
 | QR okunmuyor | Ekran parlaklığını artırın, telefonu TV ekranına biraz yaklaştırın/açıyı değiştirin; elle giriş yedek yoldur. |
 | Elle giriş için TV'nin IP'sini göremiyorum | IP:port varsayılan ekranda gizlidir — TV'de sağ üstteki "Gelişmiş / Test modu"nu açın. |
 | TV ekranında çok fazla teknik yazı var | "Test modu: AÇIK" yazıyorsa düğmeye tekrar basıp kapatın. |
-| Çeviri gelmiyor, ilk açılış | Çeviri modeli ilk kullanımda indirilir — telefon Wi-Fi'ye bağlı olsun ve birkaç dakika bekleyin. |
+| Çeviri gelmiyor, ilk açılış | Çeviri modeli ilk kullanımda indirilir — telefon Wi-Fi'ye bağlı olsun ve birkaç dakika bekleyin. İndirme başarısız olursa uygulama 15 saniyede bir kendiliğinden yeniden dener. |
+| Çeviri bazen geliyor bazen gelmiyor | Altyazı satırının kamera görüntüsündeki beyaz çerçevenin **içinde** kaldığından emin olun; telefonu sabitleyin, TV'ye biraz yaklaşın ve parlamayı (yansımayı) azaltın. |
+| TV'de "bağlı" görünüyordu ama altyazı gelmiyor | Bağlantı koparsa telefon artık bunu "bağlantı başarısız" olarak gösterir — "TV'ye Yansıt" ile yeniden bağlanın. |
 | Çeviri sesli okunmuyor | Telefonun ayarlarında Türkçe metin okuma (TTS) sesinin kurulu olduğunu kontrol edin. |
 | "Eşleştirme kodu geçersiz/süresi geçti" | Kod 60 saniye geçerlidir — TV ekranındaki GÜNCEL kodu yeniden okuyun/girin. |
 | Bağlantı kuruluyor ama altyazı gelmiyor | Telefonda kamera doğru şekilde ekrana yönlendirilmiş mi ve İngilizce altyazı ekranda GÖRÜNÜYOR mu kontrol edin — OCR, görünmeyen bir yazıyı okuyamaz. |

@@ -3,6 +3,9 @@ package com.federalturk.gamletsol.ui
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -43,6 +46,7 @@ import androidx.core.content.ContextCompat
 import com.federalturk.gamletsol.CaptionViewModel
 import com.federalturk.gamletsol.PipelineStatus
 import com.federalturk.gamletsol.TvConnectionState
+import com.federalturk.gamletsol.core.model.TextRegion
 import com.federalturk.gamletsol.core.pairing.TrustedTv
 import com.federalturk.gamletsol.core.transport.DiscoveredTv
 import com.federalturk.gamletsol.tv.TrustedTvStore
@@ -148,6 +152,9 @@ fun CaptionScreen(
         } else {
             if (granted) {
                 CameraPreview(viewModel = viewModel)
+                // 2026-11-13: OCR yalnız bu bantta arar; kullanıcı önceden
+                // nereye nişan alacağını göremiyordu (bkz. SubtitleBandGuide).
+                SubtitleBandGuide()
             } else {
                 PermissionRequestContent(onRequestCameraPermission = onRequestCameraPermission)
             }
@@ -522,7 +529,7 @@ private fun TvConnectDialog(
                         TvConnectionState.DISCONNECTED -> "Bağlı değil."
                         TvConnectionState.CONNECTING -> "Bağlanılıyor…"
                         TvConnectionState.CONNECTED -> "Bağlandı ✓ — çeviriler artık TV'ye de gönderiliyor."
-                        TvConnectionState.FAILED -> "Bağlanılamadı — IP/port/eşleştirme kodunu ve aynı ağda olduğunuzu kontrol edin."
+                        TvConnectionState.FAILED -> "Bağlantı kurulamadı veya koptu — TV açık mı, aynı ağda mısınız? QR ile yeniden bağlanın."
                     }
                     Text(statusText)
                 }
@@ -551,17 +558,18 @@ private fun TvConnectDialog(
 
 @Composable
 private fun BoxScope.StatusChip(status: PipelineStatus, voiceStatusMessage: String? = null) {
+    // Ekranın ÜSTÜNDE gösterilir: alt kısım, altyazının nişan alınacağı bant.
     val text = when (status) {
         PipelineStatus.STARTING -> "Başlatılıyor…"
         PipelineStatus.DOWNLOADING_TRANSLATION_MODEL -> "Çeviri modeli indiriliyor (yalnızca ilk sefer, Wi-Fi gerekir)…"
-        PipelineStatus.MODEL_DOWNLOAD_FAILED -> "Çeviri modeli indirilemedi — Wi-Fi'ye bağlanıp uygulamayı yeniden açın"
+        PipelineStatus.MODEL_DOWNLOAD_FAILED -> "Çeviri modeli indirilemedi — Wi-Fi'ye bağlanın, otomatik olarak yeniden denenecek"
         PipelineStatus.SCANNING -> "Kamerayı İngilizce altyazının göründüğü ekrana doğrultun — altyazı aranıyor…"
     }
     Column(
         modifier = Modifier
-            .align(Alignment.BottomCenter)
+            .align(Alignment.TopCenter)
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 32.dp)
+            .padding(start = 16.dp, end = 16.dp, top = OVERLAY_TOP_PADDING)
             .background(Color.Black.copy(alpha = 0.5f))
             .padding(12.dp),
     ) {
@@ -645,11 +653,14 @@ private fun CameraPreview(viewModel: CaptionViewModel) {
 
 @Composable
 private fun BoxScope.SubtitleOverlay(original: String?, translated: String) {
+    // 2026-11-13: üste taşındı — eskiden alttaydı ve tam da altyazının
+    // okunduğu bandın üstünü kapatıyordu (kullanıcı neye nişan aldığını
+    // göremiyordu).
     Column(
         modifier = Modifier
-            .align(Alignment.BottomCenter)
+            .align(Alignment.TopCenter)
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 32.dp)
+            .padding(start = 16.dp, end = 16.dp, top = OVERLAY_TOP_PADDING)
             .background(Color.Black.copy(alpha = 0.65f))
             .padding(12.dp),
     ) {
@@ -663,6 +674,47 @@ private fun BoxScope.SubtitleOverlay(original: String?, translated: String) {
                 text = original,
                 color = Color.White.copy(alpha = 0.7f),
                 style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
+/** Üst çubuğun altında kalacak şekilde, çeviri/durum kutusunun üst boşluğu. */
+private val OVERLAY_TOP_PADDING = 72.dp
+
+/**
+ * OCR'ın altyazı aradığı bandı ([TextRegion.DEFAULT_SUBTITLE_BAND]) kamera
+ * önizlemesinin üstünde çerçeve olarak gösterir.
+ *
+ * Eşleme notu: Önizleme (`PreviewView`, varsayılan FILL_CENTER) ve analiz
+ * aynı 4:3 kareyi kullanır. Dikey bir telefonda ekran 3:4'ten daha uzun
+ * olduğu için önizleme yüksekliğe göre ölçeklenir, yanlardan kırpılır — yani
+ * dikey konumlar (bandın üst/alt sınırı) ekran yüksekliğiyle birebir
+ * örtüşür; yatayda ise bandın tamamı görünür genişliği kaplar. Bu
+ * varsayımsal bir eşlemedir, gerçek cihazda piksel düzeyinde doğrulanmadı.
+ */
+@Composable
+private fun SubtitleBandGuide(region: TextRegion = TextRegion.DEFAULT_SUBTITLE_BAND) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val bandTop = maxHeight * region.top
+        val bandHeight = maxHeight * (region.bottom - region.top)
+        Box(
+            modifier = Modifier
+                .padding(top = bandTop)
+                .fillMaxWidth()
+                .height(bandHeight)
+                .padding(horizontal = 8.dp)
+                .border(width = 2.dp, color = Color.White.copy(alpha = 0.75f), shape = RoundedCornerShape(8.dp)),
+        ) {
+            Text(
+                text = "Altyazıyı bu çerçeveye getirin",
+                color = Color.White,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(6.dp)
+                    .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
             )
         }
     }
