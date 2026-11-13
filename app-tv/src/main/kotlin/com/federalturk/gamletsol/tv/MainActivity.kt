@@ -2,6 +2,10 @@ package com.federalturk.gamletsol.tv
 
 import android.media.tv.TvView
 import android.os.Bundle
+import com.federalturk.gamletsol.core.pairing.ResumeTokenRegistry
+import android.view.WindowManager
+import android.os.Looper
+import android.os.Handler
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -141,10 +145,43 @@ import java.util.Locale
  * denenmedi (bu kum havuzunda Android SDK/cihaz yok); yalnızca Android'in
  * resmi, belgeli `KeyGenParameterSpec` davranışına dayanır ve herhangi bir
  * hatada geçici kimliğe güvenle düşer.
+ *
+ * 2026-11-13 — eksikler ve telefon↔TV senkronizasyonu (protokol v2):
+ * - TV artık telefonun bağlı olup olmadığını biliyor (TvEventServer
+ *   `onPrimaryClientChanged`). Önceden ilk altyazı geldikten sonra QR bir
+ *   daha hiç görünmüyordu; telefon gidince TV'de eski altyazı kalıyor ve
+ *   yeniden eşleştirmenin yolu kalmıyordu. Artık telefon kopunca altyazı
+ *   kaldırılır ve QR yeni bir kodla geri gelir.
+ * - Eşleştirme kodu kullanılınca/süresi dolunca kendiliğinden yenilenir
+ *   (önceden ekranda kullanılmış/süresi geçmiş kod kalıyordu).
+ * - Telefonda altyazı ekrandan kalkınca TV'de de kalkar (`CTL:CLEAR`).
+ * - Telefon nabız gönderir; TV ~8 sn hiçbir şey alamazsa bağlantıyı ölü
+ *   sayar. Telefon kopunca TV'nin verdiği yeniden bağlanma jetonuyla
+ *   kendiliğinden geri bağlanır (yeni QR gerekmez) — bkz.
+ *   ResumeTokenRegistry.
+ * - Ekran açık tutulur (FLAG_KEEP_SCREEN_ON): kumandaya dokunulmadan
+ *   uzun süre altyazı gösterirken TV ekran koruyucuya geçmesin.
+ * - OYUN GÖRÜNTÜSÜ: 2026-11-10'da HDMI görüntüsü yalnız Test moduna
+ *   alınmıştı ve "TV'nin kendi girişi zaten Xbox'a geçirilir, uygulamanın
+ *   görüntüyü çekmesine gerek yok" diye gerekçelendirilmişti. Bu gerekçe
+ *   YANLIŞTI: TV kendi HDMI girişine geçince bu uygulama arka plana düşer
+ *   ve altyazı görünmez. Artık telefon bağlıyken, TV'de bir HDMI geçiş
+ *   girişi varsa oyun görüntüsü bu uygulamanın içinde altyazının ARKASINDA
+ *   gösterilir (kullanıcı kapatabilir, hangi HDMI girişi olduğunu
+ *   seçebilir). Test modundaki teknik satırlar yine yalnız Test modunda.
+ *
+ * NOT (dürüstlük ilkesi): Bu maddelerin hiçbiri gerçek bir TV'de denenmedi.
+ * Protokol kısmı (temizle/nabız/jeton) gerçek loopback TLS soketleriyle
+ * test edildi (core-transport TvSyncProtocolTest); HDMI görüntüsünün
+ * gerçekten açılıp açılmadığı TV üreticisine bağlıdır ve hâlâ G002/G003
+ * donanım testini bekler.
  */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Uzun süre kumandaya dokunulmadan altyazı izlenirken TV ekran
+        // koruyucuya/uykuya geçmesin.
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContent {
             MaterialTheme {
                 TvProbeScreen()
@@ -156,43 +193,42 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun TvProbeScreen() {
     val context = LocalContext.current
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
 
     var discoveredInputs by remember { mutableStateOf<List<TvInputSummary>>(emptyList()) }
     var discoveryError by remember { mutableStateOf<String?>(null) }
     var selectedInput by remember { mutableStateOf<TvInputSummary?>(null) }
     var tuneStatus by remember { mutableStateOf(TuneStatus.IDLE) }
     var tuner by remember { mutableStateOf<PassthroughTuner?>(null) }
+    var tunedInputId by remember { mutableStateOf<String?>(null) }
     var nowText by remember { mutableStateOf("") }
     var receivedCue by remember { mutableStateOf<CueEvent?>(null) }
     var serverPort by remember { mutableStateOf<Int?>(null) }
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     val localIp = remember { LocalIpAddress.find() }
 
+    // v2 senkronizasyon: telefon şu an bağlı mı, az önce mi koptu.
+    var phoneConnected by remember { mutableStateOf(false) }
+    var phoneConnectionLost by remember { mutableStateOf(false) }
+
     // G023: eşleştirme kodu kaydı — tek bir TvEventServer örneğiyle birlikte
     // yaşar (bkz. aşağıdaki DisposableEffect).
     val pairingRegistry = remember { PairingRegistry() }
     var currentToken by remember { mutableStateOf<PairingToken?>(null) }
 
-    // G024/G029: TLS kimliği — artık AndroidKeyStore'da KALICI olarak
-    // saklanıyor (bkz. PersistentTvIdentity dokümantasyonu). Uygulama
-    // yeniden başlatılsa BİLE aynı sertifika/fingerprint kullanılır; bu
-    // sayede G029'daki "bu TV'yi hatırla" özelliği GERÇEK güvenlik değeri
-    // taşır. Herhangi bir AndroidKeyStore hatasında (bu kum havuzunda
-    // doğrulanamayan bir durum) PersistentTvIdentity sessizce geçici
-    // (ephemeral) bir kimliğe düşer — TV hiçbir zaman bu yüzden çökmez.
+    // v2: kopan telefonun yeni QR okutmadan geri bağlanabilmesi için.
+    val resumeTokens = remember { ResumeTokenRegistry() }
+
+    // G024/G029: TLS kimliği — AndroidKeyStore'da KALICI (bkz.
+    // PersistentTvIdentity dokümantasyonu); herhangi bir hatada sessizce
+    // geçici kimliğe düşer.
     val tlsIdentity = remember { PersistentTvIdentity.loadOrCreate() }
 
-    // P3/G022-G030 (MVP): telefondan gelen cue'ları dinleyen TCP sunucusu +
-    // G023'teki eşleştirme kodu doğrulaması + G024'teki TLS. Activity canlı
-    // olduğu sürece çalışır, DisposableEffect ile kapatılır.
-    // G025: NSD/mDNS reklamcısı — kod her değiştiğinde (bkz. aşağıdaki
-    // LaunchedEffect(currentToken, serverPort)) yeniden kaydedilir.
+    // G025: NSD/mDNS reklamcısı — kod her değiştiğinde yeniden kaydedilir.
     val nsdAdvertiser = remember { TvNsdAdvertiser(context) }
     var nsdServiceName by remember { mutableStateOf<String?>(null) }
 
-    // G027: altyazı görüntü ayarları — ilk açılışta SharedPreferences'tan
-    // yüklenir, her değişiklikte hemen kalıcı olarak kaydedilir (bkz.
-    // [CaptionDisplayPrefs]).
+    // G027: altyazı görüntü ayarları (kalıcı).
     var displaySettings by remember { mutableStateOf(CaptionDisplayPrefs.load(context)) }
     var showDisplaySettingsPanel by remember { mutableStateOf(false) }
     fun updateDisplaySettings(transform: (CaptionDisplaySettings) -> CaptionDisplaySettings) {
@@ -201,10 +237,10 @@ private fun TvProbeScreen() {
         CaptionDisplayPrefs.save(context, updated)
     }
 
-    // (2026-11-10, kullanıcı geri bildirimi) Varsayılan ekran artık SADE —
-    // TvView/HDMI-tuning ve tüm debug/teknik satırlar yalnızca bu anahtar
-    // açıkken görünür. Bu, G002/G003/G030 donanım testlerini yapan kişi
-    // için bir "Test modu"dur, normal kullanım için değildir.
+    // Oyun görüntüsü (HDMI, telefon bağlıyken altyazının arkasında).
+    var gameViewEnabled by remember { mutableStateOf(GameViewPrefs.isEnabled(context)) }
+
+    // (2026-11-10) Teknik/debug satırları yalnız Test modunda.
     var testModeEnabled by remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
@@ -212,7 +248,26 @@ private fun TvProbeScreen() {
         val server = TvEventServer(
             tlsIdentity = tlsIdentity,
             validatePairingCode = { code -> pairingRegistry.validateAndConsume(code) == PairingResult.VALID },
-        ) { cue -> receivedCue = cue }
+            validateResumeToken = resumeTokens::validateAndConsume,
+            issueResumeToken = resumeTokens::issue,
+            // Sunucu kendi iş parçacıklarından çağırır; Compose durumu ana
+            // iş parçacığında güncellenir.
+            onClear = { mainHandler.post { receivedCue = null } },
+            onPrimaryClientChanged = { connected ->
+                mainHandler.post {
+                    phoneConnected = connected
+                    if (connected) {
+                        phoneConnectionLost = false
+                    } else {
+                        // Telefon gitti: eski altyazıyı kaldır, kullanılmış
+                        // kodun yerine yenisini üret ve QR'ı geri getir.
+                        receivedCue = null
+                        phoneConnectionLost = true
+                        currentToken = pairingRegistry.issue()
+                    }
+                }
+            },
+        ) { cue -> mainHandler.post { receivedCue = cue } }
         server.start()
         serverPort = server.boundPort
         onDispose {
@@ -221,9 +276,7 @@ private fun TvProbeScreen() {
         }
     }
 
-    // G025: eşleştirme kodu her değiştiğinde (ilk üretim veya "Yeni
-    // eşleştirme kodu oluştur" düğmesi) NSD reklamını, yeni kod +
-    // fingerprint'i taşıyacak şekilde yeniden başlat.
+    // G025: eşleştirme kodu her değiştiğinde NSD reklamını yenile.
     LaunchedEffect(currentToken, serverPort) {
         val port = serverPort
         val token = currentToken
@@ -240,14 +293,17 @@ private fun TvProbeScreen() {
         }
     }
 
-    // Saat her saniye güncellenir — overlay'in canlı render edildiğini,
-    // dondurulmuş bir ekran görüntüsü olmadığını kanıtlamak için; aynı
-    // döngü, eşleştirme kodunun geri sayımını da güncel tutar.
+    // Saniyelik döngü: saat + kod geri sayımı + süresi dolan kodun
+    // kendiliğinden yenilenmesi (telefon bağlı değilken).
     LaunchedEffect(Unit) {
         val fmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
         while (true) {
             nowMillis = System.currentTimeMillis()
             nowText = fmt.format(Date(nowMillis))
+            val token = currentToken
+            if (!phoneConnected && token != null && token.isExpiredAt(nowMillis)) {
+                currentToken = pairingRegistry.issue()
+            }
             delay(1_000)
         }
     }
@@ -256,38 +312,78 @@ private fun TvProbeScreen() {
         val result = TvInputBridge.discoverInputs(context)
         discoveredInputs = result.inputs
         discoveryError = result.error
-        selectedInput = selectPreferredHdmiPassthroughInput(result.inputs)
+        val savedInputId = GameViewPrefs.inputId(context)
+        selectedInput = result.inputs.firstOrNull { it.inputId == savedInputId && it.isHdmi && it.isPassthrough }
+            ?: selectPreferredHdmiPassthroughInput(result.inputs)
     }
 
+    val hdmiInputs = discoveredInputs.filter { it.isHdmi && it.isPassthrough }
+    val showGameView = selectedInput != null && (testModeEnabled || (phoneConnected && gameViewEnabled))
+
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-        // (2026-11-10) TvView/HDMI-tuning artık YALNIZCA Test modu
-        // açıkken kurulur/tune edilir — bkz. sınıf dokümantasyonundaki
-        // kullanıcı geri bildirimi notu. Normal (sade) kullanımda bu
-        // AndroidView hiç oluşturulmaz; ekran arka planı düz siyah kalır.
-        if (testModeEnabled) {
+        if (showGameView) {
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
                 factory = { ctx ->
-                    TvView(ctx)
-                },
-                update = { tvView ->
-                    if (tuner == null) {
-                        tuner = PassthroughTuner(tvView) { status -> tuneStatus = status }
+                    TvView(ctx).also { tvView ->
+                        tuner = PassthroughTuner(tvView) { status -> mainHandler.post { tuneStatus = status } }
+                        tunedInputId = null
+                        tuneStatus = TuneStatus.IDLE
                     }
+                },
+                update = {
+                    // Seçili giriş değiştiyse (kullanıcı "Giriş" düğmesine bastı) yeniden tune et.
                     val input = selectedInput
-                    if (input != null && tuneStatus == TuneStatus.IDLE) {
+                    if (input != null && input.inputId != tunedInputId) {
+                        tunedInputId = input.inputId
                         tuner?.tuneTo(input.inputId)
                     }
+                },
+                onRelease = {
+                    tuner?.release()
+                    tuner = null
+                    tunedInputId = null
+                    tuneStatus = TuneStatus.IDLE
                 },
             )
         }
 
-        // Sağ üst köşe: her zaman erişilebilir, göze batmayan küçük
-        // kontroller (Test modu anahtarı + Yazı ayarları). Bunlar debug
-        // satırlarının KENDİSİ değil, onları açıp kapatan düğmelerdir.
+        // Sol üst: telefon bağlıyken küçük, sade bir durum göstergesi.
+        if (phoneConnected) {
+            Text(
+                text = "● Telefon bağlı",
+                color = Color(0xFF7CD992),
+                fontSize = 14.sp,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(12.dp)
+                    .background(Color.Black.copy(alpha = 0.45f))
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            )
+        }
+
+        // Sağ üst: göze batmayan kontroller.
         Row(
             modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
         ) {
+            if (hdmiInputs.isNotEmpty()) {
+                TextButton(onClick = {
+                    gameViewEnabled = !gameViewEnabled
+                    GameViewPrefs.setEnabled(context, gameViewEnabled)
+                }) {
+                    Text(if (gameViewEnabled) "Oyun görüntüsü: Açık" else "Oyun görüntüsü: Kapalı")
+                }
+                if (hdmiInputs.size > 1) {
+                    TextButton(onClick = {
+                        val currentIndex = hdmiInputs.indexOf(selectedInput)
+                        val next = hdmiInputs[(currentIndex + 1) % hdmiInputs.size]
+                        selectedInput = next
+                        GameViewPrefs.setInputId(context, next.inputId)
+                    }) {
+                        Text("Giriş: ${selectedInput?.label ?: selectedInput?.inputId ?: "?"}")
+                    }
+                }
+            }
             TextButton(onClick = { showDisplaySettingsPanel = !showDisplaySettingsPanel }) {
                 Text(if (showDisplaySettingsPanel) "Yazı ayarlarını gizle" else "Yazı ayarları")
             }
@@ -299,81 +395,87 @@ private fun TvProbeScreen() {
             }
         }
 
-        // G027: konum (üst/alt), arka plan opaklığı ve kenar (safe-area)
-        // boşluğu artık kullanıcının [displaySettings] seçimine göre.
+        // G027: konum (üst/alt), arka plan opaklığı ve kenar boşluğu kullanıcı seçimine göre.
         val overlayAlignment = when (displaySettings.position) {
             CaptionVerticalPosition.BOTTOM -> Alignment.BottomCenter
             CaptionVerticalPosition.TOP -> Alignment.TopCenter
         }
-        Column(
-            modifier = Modifier
-                .align(overlayAlignment)
-                .fillMaxWidth()
-                .background(Color.Black.copy(alpha = displaySettings.backgroundOpacity))
-                .padding(displaySettings.safeAreaMarginDp.dp),
-        ) {
-            val liveCue = receivedCue
-            val captionFontSize = (20f * displaySettings.fontScale).sp
-            val token = currentToken
+        val liveCue = receivedCue
+        val showPairing = !phoneConnected
+        val hasOverlayContent = liveCue != null || showPairing || showDisplaySettingsPanel || testModeEnabled ||
+            (phoneConnected && showGameView && tuneStatus.isFailure())
+        if (hasOverlayContent) {
+            Column(
+                modifier = Modifier
+                    .align(overlayAlignment)
+                    .fillMaxWidth()
+                    .background(Color.Black.copy(alpha = if (showPairing) 1f else displaySettings.backgroundOpacity))
+                    .padding(displaySettings.safeAreaMarginDp.dp),
+            ) {
+                val captionFontSize = (20f * displaySettings.fontScale).sp
+                val token = currentToken
 
-            if (liveCue != null) {
-                // BAĞLI/SADE mod: telefondan gerçek bir cue geldi — yalnızca
-                // çeviriyi göster, hiçbir debug/eşleştirme bilgisi yok.
-                Text(text = liveCue.translatedText, color = Color.White, fontSize = captionFontSize)
-                if (liveCue.originalText.isNotBlank()) {
+                if (liveCue != null) {
+                    // BAĞLI mod: yalnızca çeviri (+ küçük orijinal).
+                    Text(text = liveCue.translatedText, color = Color.White, fontSize = captionFontSize)
+                    if (liveCue.originalText.isNotBlank()) {
+                        Text(
+                            text = liveCue.originalText,
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = captionFontSize * 0.75f,
+                        )
+                    }
+                } else if (showPairing && !testModeEnabled) {
                     Text(
-                        text = liveCue.originalText,
-                        color = Color.White.copy(alpha = 0.7f),
+                        text = "GAMLETSOL'a bağlanın",
+                        color = Color.White,
+                        fontSize = (28f * displaySettings.fontScale).sp,
+                    )
+                    if (phoneConnectionLost) {
+                        Text(
+                            text = "Telefon bağlantısı koptu. Telefon birkaç saniye içinde kendiliğinden " +
+                                "yeniden bağlanmayı dener; olmazsa aşağıdaki QR'ı yeniden okutun.",
+                            color = Color(0xFFFFB74D),
+                            fontSize = captionFontSize,
+                        )
+                    }
+                    Text(
+                        text = "Telefonunuzda GAMLETSOL'u açın → menü (⋮) → " +
+                            "\"TV'ye Yansıt\" → \"QR ile tara\"",
+                        color = Color.White.copy(alpha = 0.85f),
                         fontSize = captionFontSize,
                     )
-                }
-            } else if (!testModeEnabled) {
-                // BAĞLANMA/SADE mod: henüz hiçbir cue gelmedi ve Test modu
-                // kapalı — Game Caption'daki gibi tek bir basit talimat +
-                // QR/kod, başka hiçbir teknik satır yok.
-                Text(
-                    text = "GAMLETSOL'a bağlanın",
-                    color = Color.White,
-                    fontSize = (28f * displaySettings.fontScale).sp,
-                )
-                Text(
-                    text = "Telefonunuzda GAMLETSOL'u açın → menü (⋮) → " +
-                        "\"TV'ye Yansıt\" → \"QR ile tara\"",
-                    color = Color.White.copy(alpha = 0.85f),
-                    fontSize = captionFontSize,
-                )
-            } else {
-                // Test modu, henüz cue gelmedi: eski sabit test yazısı
-                // (G003'ün "donmuş ekran görüntüsü değil" kanıtı için).
-                Text(
-                    text = stringResource(R.string.tv_test_overlay_text),
-                    color = Color.White,
-                )
-            }
-
-            if (token != null && liveCue == null) {
-                // Eşleştirme kodu/QR — bağlı değilken, Test modundan
-                // BAĞIMSIZ olarak her zaman görünür (bu bir debug bilgisi
-                // değil, ürünün ana işlevidir).
-                val remainingSeconds = ((token.issuedAtMillis + token.ttlMillis - nowMillis) / 1000)
-                    .coerceAtLeast(0)
-                if (remainingSeconds > 0) {
+                } else if (testModeEnabled && liveCue == null) {
+                    // Test modu, altyazı yok: sabit test yazısı (G003 kanıtı).
                     Text(
-                        text = "Eşleştirme kodu: ${token.value}  (${remainingSeconds}s)",
+                        text = stringResource(R.string.tv_test_overlay_text),
+                        color = Color.White,
+                    )
+                }
+
+                if (phoneConnected && showGameView && tuneStatus.isFailure() && !testModeEnabled) {
+                    Text(
+                        text = "Oyun görüntüsü bu TV'de uygulama içinde açılamadı. Doğru HDMI girişini seçin " +
+                            "ya da \"Oyun görüntüsü\"nü kapatın.",
+                        color = Color(0xFFFFB74D),
+                        fontSize = captionFontSize * 0.8f,
+                    )
+                }
+
+                if (token != null && showPairing) {
+                    // Eşleştirme kodu/QR — telefon bağlı değilken her zaman görünür.
+                    val remainingSeconds = ((token.issuedAtMillis + token.ttlMillis - nowMillis) / 1000)
+                        .coerceAtLeast(0)
+                    Text(
+                        text = "Eşleştirme kodu: ${token.value}  (${remainingSeconds}s — süresi dolunca kendiliğinden yenilenir)",
                         color = Color(0xFFFFD54F),
                         fontSize = (captionFontSize.value * 1.3f).sp,
                     )
                     val ip = localIp
                     val port = serverPort
                     if (ip != null && port != null) {
-                        // G023 (QR kısmı): IP/port/kodu tek bir QR'a kodla —
-                        // kullanıcı telefonundaki kamerayla tarayabilir, üç
-                        // alanı elle yazmak zorunda kalmaz. Hata durumunda
-                        // (örn. zxing bir kodlama istisnası fırlatırsa) QR
-                        // sessizce gösterilmez — metin tabanlı alan/kod
-                        // zaten yukarıda görünür durumda, kullanıcı elle
-                        // girebilir (dürüstlük ilkesi: sahte/boş bir QR
-                        // göstermek yerine hiç göstermemek).
+                        // QR, IP/port/kod + TLS fingerprint'i taşır (G023/G024).
+                        // Kodlama hatasında QR gösterilmez; kod metni zaten yukarıda.
                         val payload = PairingQrPayload(
                             host = ip,
                             port = port,
@@ -385,91 +487,77 @@ private fun TvProbeScreen() {
                             QrCodeView(matrix = matrix, modifier = Modifier.size(220.dp))
                         }
                     }
-                } else {
-                    Text(text = "Eşleştirme kodunun süresi doldu — yeni kod oluşturun", color = Color(0xFFE5484D))
-                }
-                Button(onClick = { currentToken = pairingRegistry.issue() }) {
-                    Text("Yeni eşleştirme kodu oluştur")
-                }
-            }
-
-            // G027: yazı yerleşimi/okunabilirlik ayar paneli — kumandayla
-            // (D-pad yukarı/aşağı ile düğmeler arasında gezinip "seç" ile
-            // tıklanır; Compose'un varsayılan fokus gezinmesi, bkz. sınıf
-            // dokümantasyonundaki dürüstlük notu — gerçek kumandada HENÜZ
-            // denenmedi).
-            if (showDisplaySettingsPanel) {
-                Text(
-                    text = "Font: %.1fx · Konum: %s · Arka plan: %%%d · Kenar: %ddp".format(
-                        displaySettings.fontScale,
-                        if (displaySettings.position == CaptionVerticalPosition.BOTTOM) "Alt" else "Üst",
-                        (displaySettings.backgroundOpacity * 100).toInt(),
-                        displaySettings.safeAreaMarginDp,
-                    ),
-                    color = Color(0xFFFFD54F),
-                )
-                Row {
-                    Button(onClick = { updateDisplaySettings { it.withFontScaleDelta(-1) } }) { Text("Font -") }
-                    Button(onClick = { updateDisplaySettings { it.withFontScaleDelta(1) } }) { Text("Font +") }
-                }
-                Row {
-                    Button(onClick = { updateDisplaySettings { it.withTogglePosition() } }) { Text("Konum değiştir") }
-                }
-                Row {
-                    Button(onClick = { updateDisplaySettings { it.withBackgroundOpacityDelta(-1) } }) { Text("Arka plan -") }
-                    Button(onClick = { updateDisplaySettings { it.withBackgroundOpacityDelta(1) } }) { Text("Arka plan +") }
-                }
-                Row {
-                    Button(onClick = { updateDisplaySettings { it.withSafeAreaMarginDelta(-1) } }) { Text("Kenar -") }
-                    Button(onClick = { updateDisplaySettings { it.withSafeAreaMarginDelta(1) } }) { Text("Kenar +") }
-                }
-                Button(onClick = { updateDisplaySettings { it.reset() } }) {
-                    Text("Varsayılanlara dön")
-                }
-            }
-
-            // (2026-11-10) Aşağıdaki TÜM satırlar yalnızca Test modu
-            // açıkken görünür — bunlar G001-G003/G030 donanım testleri
-            // için gereken teknik/debug bilgilerdir (bkz.
-            // docs/testing/P0-DONANIM-TEST-REHBERI.md), normal kullanıcı
-            // deneyiminin bir parçası DEĞİLDİR. Hiçbir satır silinmedi,
-            // yalnızca bu koşulun arkasına taşındı.
-            if (testModeEnabled) {
-                Text(text = "Canlı saat (donmuş değil): $nowText", color = Color(0xFFFF6D10))
-                Text(
-                    text = "Telefondan bağlan (manuel): ${localIp ?: "IP bulunamadı"}:${serverPort ?: "…"}",
-                    color = Color(0xFF4DD0E1),
-                )
-                Text(
-                    text = "Otomatik keşif (NSD): " +
-                        (nsdServiceName?.let { "\"$it\" olarak yayında" }
-                            ?: "yayında değil (devre dışı/engelli olabilir — QR/manuel giriş hâlâ çalışır)"),
-                    color = Color.Gray,
-                )
-                Text(
-                    text = "Durum: ${tuneStatus.name} · Giriş: ${selectedInput?.inputId ?: "bulunamadı"}",
-                    color = Color.White,
-                )
-                if (discoveryError != null) {
-                    Text(text = "Hata: $discoveryError", color = Color(0xFFE5484D))
-                }
-                Text(
-                    text = "Algılanan ${discoveredInputs.size} giriş: " +
-                        discoveredInputs.joinToString { "${it.inputId}(hdmi=${it.isHdmi},pt=${it.isPassthrough})" },
-                    color = Color.Gray,
-                )
-                if (discoveredInputs.count { it.isHdmi && it.isPassthrough } > 1) {
-                    Button(onClick = {
-                        val hdmiInputs = discoveredInputs.filter { it.isHdmi && it.isPassthrough }
-                        val currentIndex = hdmiInputs.indexOf(selectedInput)
-                        val next = hdmiInputs[(currentIndex + 1) % hdmiInputs.size]
-                        selectedInput = next
-                        tuneStatus = TuneStatus.IDLE
-                    }) {
-                        Text("Sonraki HDMI girişine geç")
+                    Button(onClick = { currentToken = pairingRegistry.issue() }) {
+                        Text("Yeni eşleştirme kodu oluştur")
                     }
+                }
+
+                // G027: yazı yerleşimi/okunabilirlik ayar paneli (kumandayla).
+                if (showDisplaySettingsPanel) {
+                    Text(
+                        text = "Font: %.1fx · Konum: %s · Arka plan: %%%d · Kenar: %ddp".format(
+                            displaySettings.fontScale,
+                            if (displaySettings.position == CaptionVerticalPosition.BOTTOM) "Alt" else "Üst",
+                            (displaySettings.backgroundOpacity * 100).toInt(),
+                            displaySettings.safeAreaMarginDp,
+                        ),
+                        color = Color(0xFFFFD54F),
+                    )
+                    Row {
+                        Button(onClick = { updateDisplaySettings { it.withFontScaleDelta(-1) } }) { Text("Font -") }
+                        Button(onClick = { updateDisplaySettings { it.withFontScaleDelta(1) } }) { Text("Font +") }
+                    }
+                    Row {
+                        Button(onClick = { updateDisplaySettings { it.withTogglePosition() } }) { Text("Konum değiştir") }
+                    }
+                    Row {
+                        Button(onClick = { updateDisplaySettings { it.withBackgroundOpacityDelta(-1) } }) { Text("Arka plan -") }
+                        Button(onClick = { updateDisplaySettings { it.withBackgroundOpacityDelta(1) } }) { Text("Arka plan +") }
+                    }
+                    Row {
+                        Button(onClick = { updateDisplaySettings { it.withSafeAreaMarginDelta(-1) } }) { Text("Kenar -") }
+                        Button(onClick = { updateDisplaySettings { it.withSafeAreaMarginDelta(1) } }) { Text("Kenar +") }
+                    }
+                    Button(onClick = { updateDisplaySettings { it.reset() } }) {
+                        Text("Varsayılanlara dön")
+                    }
+                }
+
+                // Teknik satırlar — yalnız Test modunda (bkz.
+                // docs/testing/P0-DONANIM-TEST-REHBERI.md).
+                if (testModeEnabled) {
+                    Text(text = "Canlı saat (donmuş değil): $nowText", color = Color(0xFFFF6D10))
+                    Text(
+                        text = "Telefon: " + if (phoneConnected) "bağlı" else "bağlı değil",
+                        color = Color.White,
+                    )
+                    Text(
+                        text = "Telefondan bağlan (manuel): ${localIp ?: "IP bulunamadı"}:${serverPort ?: "…"}",
+                        color = Color(0xFF4DD0E1),
+                    )
+                    Text(
+                        text = "Otomatik keşif (NSD): " +
+                            (nsdServiceName?.let { "\"$it\" olarak yayında" }
+                                ?: "yayında değil (devre dışı/engelli olabilir — QR/manuel giriş hâlâ çalışır)"),
+                        color = Color.Gray,
+                    )
+                    Text(
+                        text = "Durum: ${tuneStatus.name} · Giriş: ${selectedInput?.inputId ?: "bulunamadı"}",
+                        color = Color.White,
+                    )
+                    if (discoveryError != null) {
+                        Text(text = "Hata: $discoveryError", color = Color(0xFFE5484D))
+                    }
+                    Text(
+                        text = "Algılanan ${discoveredInputs.size} giriş: " +
+                            discoveredInputs.joinToString { "${it.inputId}(hdmi=${it.isHdmi},pt=${it.isPassthrough})" },
+                        color = Color.Gray,
+                    )
                 }
             }
         }
     }
 }
+
+private fun TuneStatus.isFailure(): Boolean =
+    this == TuneStatus.CONNECTION_FAILED || this == TuneStatus.VIDEO_UNAVAILABLE || this == TuneStatus.DISCONNECTED

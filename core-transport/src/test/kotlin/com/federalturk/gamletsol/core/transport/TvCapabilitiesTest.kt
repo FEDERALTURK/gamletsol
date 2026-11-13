@@ -14,8 +14,8 @@ class TvCapabilitiesTest {
 
     @Test
     fun `decode is tolerant of flags being reordered`() {
-        val reordered = "CAPS:1;layout=false;heartbeat=false;clear=false"
-        assertEquals(TvCapabilities.CURRENT, TvCapabilities.decode(reordered))
+        val reordered = "CAPS:2;resume=true;layout=false;heartbeat=true;clear=true"
+        assertEquals(TvCapabilities.CURRENT.copy(supportsResume = true), TvCapabilities.decode(reordered))
     }
 
     @Test

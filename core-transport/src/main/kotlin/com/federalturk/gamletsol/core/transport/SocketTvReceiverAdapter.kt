@@ -13,13 +13,11 @@ class SocketTvReceiverAdapter(private val client: TvEventClient) : TvReceiverAda
 
     override fun sendSubtitle(event: CueEvent): Boolean = client.send(event)
 
-    override fun clear(cueId: String): Boolean {
-        // bkz. TvReceiverAdapter.clear dokümantasyonu — protokol henüz bir
-        // "temizle" mesaj türü tanımlamıyor.
-        return false
-    }
+    override fun clear(cueId: String): Boolean = client.sendClear()
 
-    override fun heartbeat(): Boolean = client.isConnected
+    override fun heartbeat(): Boolean = client.sendPing()
+
+    override val resumeToken: String? get() = client.resumeToken
 
     override fun disconnect() = client.close()
 }

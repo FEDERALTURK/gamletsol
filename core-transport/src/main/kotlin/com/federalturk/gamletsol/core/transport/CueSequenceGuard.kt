@@ -40,14 +40,20 @@ class CueSequenceGuard {
      *   değerden KESİNLİKLE büyük olmalıdır; değilse (eşit = tekrar/replay,
      *   küçük = sırası bozulmuş/reorder veya tekrar) reddedilir.
      */
-    fun accept(decoded: DecodedCueEvent): Boolean {
-        if (decoded.epochId != currentEpochId) {
-            currentEpochId = decoded.epochId
-            lastAcceptedSequence = decoded.sequence
+    fun accept(decoded: DecodedCueEvent): Boolean = accept(decoded.sequence, decoded.epochId)
+
+    /** v2: kontrol mesajları (CTL:CLEAR / CTL:PING) da aynı sıra/epoch kuralına tabidir. */
+    fun accept(decoded: DecodedControlMessage): Boolean = accept(decoded.sequence, decoded.epochId)
+
+    @Synchronized
+    fun accept(sequence: Long, epochId: String): Boolean {
+        if (epochId != currentEpochId) {
+            currentEpochId = epochId
+            lastAcceptedSequence = sequence
             return true
         }
-        if (decoded.sequence <= lastAcceptedSequence) return false
-        lastAcceptedSequence = decoded.sequence
+        if (sequence <= lastAcceptedSequence) return false
+        lastAcceptedSequence = sequence
         return true
     }
 }

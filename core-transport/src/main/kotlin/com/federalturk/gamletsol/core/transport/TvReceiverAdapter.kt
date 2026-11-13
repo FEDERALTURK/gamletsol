@@ -29,25 +29,23 @@ interface TvReceiverAdapter {
     fun sendSubtitle(event: CueEvent): Boolean
 
     /**
-     * Belirtilen cue'yu TV ekranından temizlemesini ister.
-     *
-     * NOT (dürüstlük ilkesi): Protokol henüz bir "temizle" mesaj türü
-     * TANIMLAMIYOR ([TvCapabilities.supportsClear] `false`) — bu metod
-     * her zaman `false` döner, hiçbir şey TV'ye gönderilmez. TV ekranında
-     * son cue, yenisi gelene kadar görünmeye devam eder (bilinen MVP sınırı).
+     * Belirtilen cue'yu TV ekranından temizlemesini ister (protokol v2,
+     * `CTL:CLEAR`). TV desteklemiyorsa ([TvCapabilities.supportsClear]
+     * `false`) hiçbir şey göndermez ve `false` döner.
      */
     fun clear(cueId: String): Boolean
 
     /**
-     * NOT (dürüstlük ilkesi): Gerçek bir round-trip PING/PONG DEĞİL —
-     * yalnızca [isConnected] soket durumunu döner. Karşı taraf (TV) ağ
-     * bağlantısını sessizce kaybetmişse (ör. Wi-Fi kopması, uygulama
-     * çökmesi, ağ kablosu/yönlendirici arızası) bu hâlâ `true` dönebilir —
-     * işletim sistemi RST/FIN'i henüz işlemciye bildirmemiş olabilir.
-     * Gerçek bir canlılık kontrolü (karşı taraftan aktif bir yanıt istemek)
-     * yol haritası G028'e (yeniden bağlanma/oturum yönetimi) bırakıldı.
+     * Protokol v2 nabzı (`CTL:PING`). Tek yönlüdür (yanıt beklenmez): TV
+     * nabız gelmeyince telefonun gittiğini anlar; burada yazma başarısız
+     * olursa (`false`) bağlantı kopmuş demektir. TV nabzı desteklemiyorsa
+     * yalnız soketin açık olup olmadığını döner (o durumda sessiz bir
+     * kopmayı hemen fark etmeyebilir).
      */
     fun heartbeat(): Boolean
+
+    /** v2: TV'nin verdiği yeniden bağlanma jetonu (yoksa `null`). */
+    val resumeToken: String? get() = null
 
     /** Bağlantıyı kapatır; tekrar çağrılması güvenlidir. */
     fun disconnect()

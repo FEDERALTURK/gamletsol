@@ -1,6 +1,6 @@
 # GAMLETSOL — Kurulum ve Kullanım Kılavuzu
 
-*Son güncelleme: 2026-11-13 — çeviri kütüphanesi, yatay kullanım, altyazı çerçevesi (OCR bandı), çevirinin ekranın üstünde gösterilmesi ve yeni sorun giderme satırları eklendi.*
+*Son güncelleme: 2026-11-13 — TV bağlantı senkronizasyonu ve oyun görüntüsü, çeviri kütüphanesi, yatay kullanım, altyazı çerçevesi (OCR bandı), çevirinin ekranın üstünde gösterilmesi ve yeni sorun giderme satırları eklendi.*
 
 > Bu belge, GAMLETSOL'un ne olduğunu, nasıl çalıştığını, nasıl kurulacağını
 > ve nasıl kullanılacağını adım adım anlatır. Kod/mimari detayları için kök
@@ -270,6 +270,34 @@ TV" gibi davranıp araya giremez. Elle giriş yolu bu korumayı **sağlamaz**
 (fingerprint içermez) — yalnızca güvendiğiniz bir ağda, NSD/QR
 çalışmadığında yedek olarak kullanın.
 
+### Bağlıyken TV'de ne görürsünüz?
+
+- Sol üstte küçük, yeşil **"● Telefon bağlı"** yazısı.
+- **Oyun görüntüsü:** TV'de bir HDMI girişi bulunursa (konsolun takılı
+  olduğu giriş), telefon bağlanınca oyunun görüntüsü GAMLETSOL'un içinde,
+  altyazının arkasında gösterilir. Sağ üstteki **"Oyun görüntüsü: Açık /
+  Kapalı"** ile açıp kapatabilir, birden fazla HDMI girişi varsa
+  **"Giriş: …"** düğmesiyle doğru girişi seçebilirsiniz (seçim hatırlanır).
+  Bazı TV'ler kendi HDMI görüntüsünü başka uygulamaların içinde
+  göstermeye izin vermeyebilir; o durumda ekranda bununla ilgili bir uyarı
+  çıkar.
+- Telefonda altyazı ekrandan kalkınca TV'deki altyazı da kalkar.
+- TV, uygulama açıkken ekran koruyucuya/uykuya geçmez.
+
+### Bağlantı koparsa
+
+- Telefon bağlantının koptuğunu birkaç saniye içinde fark eder ve
+  **kendiliğinden yeniden bağlanmayı dener** (telefon menüsünde "TV
+  bağlantısı (yeniden bağlanıyor…)" yazar). Bunun için QR'ı yeniden
+  okutmanız gerekmez; yaklaşık bir buçuk dakika boyunca denenir.
+- TV tarafında telefon gidince eski altyazı kaldırılır ve QR yeni bir
+  kodla yeniden görünür.
+- Kendiliğinden bağlanma başarısız olursa (ör. TV uygulaması kapatılıp
+  açıldıysa) telefonda "Bağlantı kurulamadı veya koptu" yazar — QR'ı
+  yeniden okutun.
+- Eşleştirme kodu 60 saniyede bir kendiliğinden yenilenir; "Yeni eşleştirme
+  kodu oluştur"a basmanız gerekmez.
+
 ## 8. Altyazı görüntüleme ayarları (TV tarafı)
 
 TV ekranının **sağ üst köşesindeki "Yazı ayarları"** düğmesine kumandanızla
@@ -368,8 +396,13 @@ itibariyle **henüz yapılmamış/doğrulanmamış** olanlar:
   kişisel düzeltmeler var (bkz. "Çeviri kütüphanesi"), ancak belirli bir
   oyunun tüm diyaloglarını kapsayan bir paket henüz üretilmedi (yol
   haritası G074–G076); kütüphanede olmayan satırlar canlı çevrilir.
-- **Otomatik yeniden bağlanma yok** — bağlantı koptuğunda "TV'ye
-  Yansıt"ı elle yeniden açmanız gerekir.
+- **Otomatik yeniden bağlanma sınırlı** — kopan bağlantı ~1,5 dakika
+  boyunca kendiliğinden yeniden denenir; TV uygulaması kapatılıp
+  açıldıysa ya da süre dolduysa QR'ı yeniden okutmanız gerekir.
+- **TV'nin kendi HDMI girişine geçince altyazı görünmez** — altyazının
+  oyunun üstünde görünmesi için GAMLETSOL TV uygulaması açık kalmalı ve
+  oyun görüntüsü onun içinde gösterilmeli ("Oyun görüntüsü: Açık"). Bunun
+  her TV modelinde çalışıp çalışmadığı henüz gerçek cihazda doğrulanmadı.
 - **Ücretli/Pro katman ayrımı henüz uygulanmadı** — tüm özellikler şu an
   ücretsizdir.
 - **Debug imzalı APK'lar:** Dağıtılan APK'lar "release" imzalı değildir

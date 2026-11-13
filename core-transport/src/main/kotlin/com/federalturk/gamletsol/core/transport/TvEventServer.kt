@@ -6,6 +6,7 @@ import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.SocketTimeoutException
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -77,13 +78,36 @@ private fun Socket.closeForcibly() {
  * çözülen [DecodedCueEvent], bu koruyucu tarafından kabul edilmezse (tekrar/
  * replay, sırası bozulmuş/reorder) [onCueReceived] HİÇ ÇAĞRILMAZ, sessizce
  * atlanır (bkz. [CueEventCodec]/[CueSequenceGuard] dokümantasyonu).
+ *
+ * PROTOKOL v2 (2026-11-13, telefon↔TV senkronizasyonu):
+ * - **Temizle**: `CTL:CLEAR` satırı gelince [onClear] çağrılır (telefonda
+ *   altyazı ekrandan kalktı → TV'de de kalksın).
+ * - **Nabız**: bir bağlantıda ilk `CTL:PING` görüldükten sonra okuma zaman
+ *   aşımı [heartbeatTimeoutMillis] olarak ayarlanır; o süre hiçbir satır
+ *   gelmezse bağlantı ölü sayılıp kapatılır. (İlk PING'den önce zaman aşımı
+ *   yok — nabız göndermeyen eski bir telefon bağlantısı düşürülmez.)
+ * - **Bağlantı durumu**: bir bağlantı birincil olunca/birincil bağlantı
+ *   kapanınca [onPrimaryClientChanged] çağrılır — TV arayüzü telefon
+ *   gidince eşleştirme ekranına dönebilsin diye.
+ * - **Yeniden bağlanma jetonu**: [issueResumeToken] verilirse, el sıkışması
+ *   başarılı olan her bağlantıya yetenek satırından sonra
+ *   `RESUME_TOKEN:<jeton>` satırı gönderilir. Telefon bağlantı koparsa
+ *   `PAIR:<kod>` yerine `RESUME:<jeton>` göndererek yeni kod okutmadan geri
+ *   bağlanabilir; jeton [validateResumeToken] ile doğrulanır.
  */
 class TvEventServer(
     port: Int = DEFAULT_PORT,
     private val tlsIdentity: TvTlsIdentity,
     private val validatePairingCode: ((String) -> Boolean)? = null,
+    private val validateResumeToken: ((String) -> Boolean)? = null,
+    private val issueResumeToken: (() -> String)? = null,
+    private val onClear: () -> Unit = {},
+    private val onPrimaryClientChanged: (connected: Boolean) -> Unit = {},
+    private val heartbeatTimeoutMillis: Int = DEFAULT_HEARTBEAT_TIMEOUT_MILLIS,
     private val onCueReceived: (CueEvent) -> Unit,
 ) {
+    private val capabilities: TvCapabilities = TvCapabilities.CURRENT.copy(supportsResume = issueResumeToken != null)
+
     private val serverSocket: ServerSocket = run {
         val sslContext = SSLContext.getInstance("TLS")
         // trustManagers = null → istemci sertifikası İSTENMİYOR/doğrulanmıyor
@@ -141,6 +165,8 @@ class TvEventServer(
     }
 
     private fun handleClient(socket: Socket) {
+        var becamePrimary = false
+        var heartbeatSeen = false
         try {
             val reader = BufferedReader(InputStreamReader(socket.inputStream, Charsets.UTF_8))
             val writer = BufferedWriter(OutputStreamWriter(socket.outputStream, Charsets.UTF_8))
@@ -152,8 +178,15 @@ class TvEventServer(
                 } catch (e: Exception) {
                     null
                 }
-                val code = handshakeLine?.removePrefix(PAIR_PREFIX)?.takeIf { handshakeLine.startsWith(PAIR_PREFIX) }
-                val accepted = code != null && validator(code)
+                // v2: "PAIR:<kod>" (QR/kod ile ilk eşleştirme) veya
+                // "RESUME:<jeton>" (kopan bağlantının kod okutmadan geri gelmesi).
+                val accepted = when {
+                    handshakeLine == null -> false
+                    handshakeLine.startsWith(PAIR_PREFIX) -> validator(handshakeLine.removePrefix(PAIR_PREFIX))
+                    handshakeLine.startsWith(RESUME_PREFIX) ->
+                        validateResumeToken?.invoke(handshakeLine.removePrefix(RESUME_PREFIX)) == true
+                    else -> false
+                }
                 val response = if (accepted) PAIR_OK_RESPONSE else PAIR_REJECTED_RESPONSE
                 try {
                     writer.write(response)
@@ -178,8 +211,14 @@ class TvEventServer(
             // kullanılabilir saymaz; bu yüzden bu yazma başarısız olursa
             // bağlantı burada bırakılır (istemci zaten `null` dönecektir).
             try {
-                writer.write(TvCapabilities.CURRENT.encode())
+                writer.write(capabilities.encode())
                 writer.newLine()
+                // v2: yeniden bağlanma jetonu (bkz. sınıf dokümantasyonu).
+                val resumeToken = issueResumeToken?.invoke()
+                if (resumeToken != null) {
+                    writer.write("$RESUME_TOKEN_PREFIX$resumeToken")
+                    writer.newLine()
+                }
                 writer.flush()
             } catch (e: Exception) {
                 return
@@ -198,6 +237,8 @@ class TvEventServer(
             if (staleSocket != null && staleSocket !== socket) {
                 staleSocket.closeForcibly()
             }
+            becamePrimary = true
+            runCatching { onPrimaryClientChanged(true) }
 
             // G026: bu bağlantıya özgü sıra/epoch koruyucusu — bkz. sınıf
             // dokümantasyonu ve [CueSequenceGuard].
@@ -206,9 +247,29 @@ class TvEventServer(
             while (running.get()) {
                 val line = try {
                     reader.readLine()
+                } catch (e: SocketTimeoutException) {
+                    // v2 nabız zaman aşımı: telefon nabız göndermeye başlamıştı
+                    // ama artık hiçbir satır gelmiyor → bağlantı ölü sayılır.
+                    null
                 } catch (e: Exception) {
                     null
                 } ?: break
+
+                if (ControlMessageCodec.isControl(line)) {
+                    val control = ControlMessageCodec.decode(line) ?: continue
+                    if (!sequenceGuard.accept(control)) continue
+                    when (control.type) {
+                        ControlType.CLEAR -> runCatching { onClear() }
+                        ControlType.PING -> {
+                            if (!heartbeatSeen) {
+                                heartbeatSeen = true
+                                runCatching { socket.soTimeout = heartbeatTimeoutMillis }
+                            }
+                        }
+                    }
+                    continue
+                }
+
                 val decoded = CueEventCodec.decode(line) ?: continue
                 if (!sequenceGuard.accept(decoded)) continue
                 onCueReceived(decoded.event)
@@ -220,8 +281,18 @@ class TvEventServer(
             // (yani kendisinden sonra yeni bir birincil atanmadıysa) kaydı
             // temizle — aksi halde zaten daha önce atanmış YENİ birincili
             // yanlışlıkla null'a düşürürdük.
-            synchronized(primaryClientLock) {
-                if (primaryClientSocket === socket) primaryClientSocket = null
+            val wasStillPrimary = synchronized(primaryClientLock) {
+                if (primaryClientSocket === socket) {
+                    primaryClientSocket = null
+                    true
+                } else {
+                    false
+                }
+            }
+            // Yalnız GERÇEKTEN birincil olan bağlantı kapanınca bildir —
+            // yerine yenisi geçtiyse (yeniden bağlanma) "koptu" deme.
+            if (becamePrimary && wasStillPrimary && running.get()) {
+                runCatching { onPrimaryClientChanged(false) }
             }
         }
     }
@@ -258,5 +329,14 @@ class TvEventServer(
 
         /** Sunucunun handshake'i reddettiğini bildiren yanıt satırı. */
         const val PAIR_REJECTED_RESPONSE = "PAIR_REJECTED"
+
+        /** v2: kopan bağlantının kod okutmadan geri bağlanma handshake'i. */
+        const val RESUME_PREFIX = "RESUME:"
+
+        /** v2: yetenek satırından sonra sunucunun verdiği yeniden bağlanma jetonu. */
+        const val RESUME_TOKEN_PREFIX = "RESUME_TOKEN:"
+
+        /** v2: nabız görülen bir bağlantıda bu kadar süre satır gelmezse bağlantı ölü sayılır. */
+        const val DEFAULT_HEARTBEAT_TIMEOUT_MILLIS = 8_000
     }
 }

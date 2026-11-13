@@ -21,6 +21,7 @@ import com.federalturk.gamletsol.speech.AndroidTtsSpeechOutput
 import com.federalturk.gamletsol.speech.TurkishVoiceStatus
 import com.federalturk.gamletsol.translate.MlKitTranslator
 import com.federalturk.gamletsol.translate.TranslationLibraryStore
+import com.federalturk.gamletsol.tv.TvLinkState
 import com.federalturk.gamletsol.tv.TvRelaySubtitleSink
 import com.federalturk.gamletsol.ui.PhoneScreenSubtitleSink
 import java.util.concurrent.Executors
@@ -62,6 +63,9 @@ enum class TvConnectionState {
     DISCONNECTED,
     CONNECTING,
     CONNECTED,
+
+    /** Bağlantı koptu; TV'nin verdiği jetonla kendiliğinden yeniden bağlanılıyor (QR gerekmez). */
+    RECONNECTING,
     FAILED,
 }
 
@@ -79,7 +83,13 @@ class CaptionViewModel(application: Application) : AndroidViewModel(application)
     // "Bağlı" demeye devam etmiyor — önceden sink sessizce bağlantıyı
     // bırakıyor, ekranda ise "TV'ye bağlı" yazmaya devam ediyordu.
     private val tvRelaySink = TvRelaySubtitleSink(
-        onConnectionLost = { _tvConnectionState.value = TvConnectionState.FAILED },
+        onLinkStateChanged = { state ->
+            _tvConnectionState.value = when (state) {
+                TvLinkState.CONNECTED -> TvConnectionState.CONNECTED
+                TvLinkState.RECONNECTING -> TvConnectionState.RECONNECTING
+                TvLinkState.LOST -> TvConnectionState.FAILED
+            }
+        },
     )
 
     private val _tvConnectionState = MutableStateFlow(TvConnectionState.DISCONNECTED)
@@ -348,6 +358,6 @@ class CaptionViewModel(application: Application) : AndroidViewModel(application)
         cameraExecutor.shutdown()
         rawTranslator.close()
         speechOutput.shutdown()
-        tvRelaySink.disconnect()
+        tvRelaySink.shutdown()
     }
 }

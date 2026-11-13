@@ -45,8 +45,9 @@ class SocketTvReceiverAdapterTest {
     }
 
     @Test
-    fun `clear is honestly unsupported and never sends anything`() {
-        val s = TvEventServer(port = 0, tlsIdentity = TvTlsIdentity.generate()) { }
+    fun `clear reaches the TV (protocol v2)`() {
+        val cleared = LinkedBlockingQueue<Boolean>()
+        val s = TvEventServer(port = 0, tlsIdentity = TvTlsIdentity.generate(), onClear = { cleared.offer(true) }) { }
         server = s
         s.start()
 
@@ -54,7 +55,9 @@ class SocketTvReceiverAdapterTest {
         val a = SocketTvReceiverAdapter(client!!)
         adapter = a
 
-        assertFalse("clear() must report unsupported, matching TvCapabilities.supportsClear=false", a.clear("any-id"))
+        assertTrue(a.capabilities.supportsClear)
+        assertTrue(a.clear("any-id"))
+        assertEquals(true, cleared.poll(2, TimeUnit.SECONDS))
     }
 
     @Test

@@ -22,9 +22,13 @@ data class TvCapabilities(
     val supportsClear: Boolean,
     val supportsHeartbeat: Boolean,
     val supportsLayout: Boolean,
+    // Protokol v2 (2026-11-13): TV, eşleştirmeden sonra bir "yeniden bağlanma
+    // jetonu" verir; telefon bağlantı koparsa yeni kod okutmadan bu jetonla
+    // geri bağlanabilir (bkz. TvEventServer.RESUME_PREFIX).
+    val supportsResume: Boolean = false,
 ) {
     fun encode(): String =
-        "$PREFIX$protocolVersion;clear=$supportsClear;heartbeat=$supportsHeartbeat;layout=$supportsLayout"
+        "$PREFIX$protocolVersion;clear=$supportsClear;heartbeat=$supportsHeartbeat;layout=$supportsLayout;resume=$supportsResume"
 
     companion object {
         /** [TvEventClient]/[TvEventServer] el sıkışma satırının öneki. */
@@ -33,19 +37,23 @@ data class TvCapabilities(
         /**
          * Bu sürümün (app-tv + core-transport) ŞU AN GERÇEKTEN desteklediği
          * sabit değer seti:
-         * - `clear = false` — protokolde henüz ayrı bir "temizle" mesaj türü
-         *   yok ([TvRelaySubtitleSink.clear] no-op).
-         * - `heartbeat = false` — henüz gerçek bir round-trip PING/PONG YOK;
-         *   bağlı istemciler yalnızca soket seviyesinde "bağlı mı" kontrolü
-         *   yapabilir (bkz. [TvReceiverAdapter.heartbeat] dokümantasyonu).
-         *   Gerçek canlılık kontrolü yol haritası G028'e bırakıldı.
+         * - `clear = true` (v2) — telefon, altyazı ekrandan kalkınca
+         *   `CTL:CLEAR` gönderir; TV altyazıyı kaldırır.
+         * - `heartbeat = true` (v2) — telefon boştayken ~2 sn'de bir
+         *   `CTL:PING` gönderir. Tek yönlüdür (PONG yok): TV, nabız gelmeyince
+         *   telefonun gittiğini anlar; telefon, nabız YAZILAMAYINCA
+         *   bağlantının koptuğunu anlar.
+         * - `resume` sunucu tarafında, yeniden bağlanma jetonu verilip
+         *   verilmediğine göre ayarlanır (bkz. TvEventServer).
          * - `layout = false` — Akıllı Ekran (menü/envanter çevirisi, Pro
          *   katman) henüz yapılmadı.
          */
         val CURRENT = TvCapabilities(
-            protocolVersion = 1,
-            supportsClear = false,
-            supportsHeartbeat = false,
+            // v2 (2026-11-13): "temizle" (CTL:CLEAR) ve "nabız" (CTL:PING)
+            // mesajları artık destekleniyor — bkz. ControlMessageCodec.
+            protocolVersion = 2,
+            supportsClear = true,
+            supportsHeartbeat = true,
             supportsLayout = false,
         )
 
@@ -70,6 +78,7 @@ data class TvCapabilities(
                     supportsClear = flags["clear"] ?: false,
                     supportsHeartbeat = flags["heartbeat"] ?: false,
                     supportsLayout = flags["layout"] ?: false,
+                    supportsResume = flags["resume"] ?: false,
                 )
             } catch (e: Exception) {
                 null

@@ -308,10 +308,10 @@ private fun BoxScope.TopBar(
                 DropdownMenuItem(
                     text = {
                         Text(
-                            if (tvConnectionState == TvConnectionState.CONNECTED) {
-                                "TV bağlantısı (bağlı ✓)"
-                            } else {
-                                "TV'ye Yansıt"
+                            when (tvConnectionState) {
+                                TvConnectionState.CONNECTED -> "TV bağlantısı (bağlı ✓)"
+                                TvConnectionState.RECONNECTING -> "TV bağlantısı (yeniden bağlanıyor…)"
+                                else -> "TV'ye Yansıt"
                             },
                         )
                     },
@@ -470,7 +470,7 @@ private fun TvConnectDialog(
             // Yatayda ekran yüksekliği az; elle giriş alanları açılınca içerik
             // taşmasın diye kaydırılabilir.
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                if (connectionState != TvConnectionState.CONNECTED) {
+                if (!connectionState.isLinked()) {
                     // Birincil akış, tam olarak Game Caption'daki gibi: TV
                     // ekranındaki QR'ı tarayıp bağlan. Tek, büyük düğme.
                     Text(
@@ -534,8 +534,8 @@ private fun TvConnectDialog(
                     }
                 }
 
-                if (connectionState == TvConnectionState.CONNECTED || showManualEntry) {
-                    if (connectionState != TvConnectionState.CONNECTED) {
+                if (connectionState.isLinked() || showManualEntry) {
+                    if (!connectionState.isLinked()) {
                         Text(
                             "TV ekranındaki IP/port ve eşleştirme kodunu girin. Kod " +
                                 "60 saniye geçerlidir — süresi geçerse TV'de \"Yeni " +
@@ -597,6 +597,8 @@ private fun TvConnectDialog(
                         TvConnectionState.DISCONNECTED -> "Bağlı değil."
                         TvConnectionState.CONNECTING -> "Bağlanılıyor…"
                         TvConnectionState.CONNECTED -> "Bağlandı ✓ — çeviriler artık TV'ye de gönderiliyor."
+                        TvConnectionState.RECONNECTING ->
+                            "Bağlantı koptu — kendiliğinden yeniden bağlanılıyor (yeni QR gerekmez)…"
                         TvConnectionState.FAILED -> "Bağlantı kurulamadı veya koptu — TV açık mı, aynı ağda mısınız? QR ile yeniden bağlanın."
                     }
                     Text(statusText)
@@ -604,7 +606,7 @@ private fun TvConnectDialog(
             }
         },
         confirmButton = {
-            if (connectionState == TvConnectionState.CONNECTED) {
+            if (connectionState.isLinked()) {
                 Button(onClick = { onDisconnect() }) { Text("Bağlantıyı kes") }
             } else {
                 Button(
@@ -952,3 +954,7 @@ private fun TranslationLibraryDialog(
         },
     )
 }
+
+/** Bağlı ya da kendiliğinden yeniden bağlanmaya çalışıyor (kullanıcı için "bağlantı var" sayılır). */
+private fun TvConnectionState.isLinked(): Boolean =
+    this == TvConnectionState.CONNECTED || this == TvConnectionState.RECONNECTING

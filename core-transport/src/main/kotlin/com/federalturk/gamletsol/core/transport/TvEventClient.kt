@@ -82,10 +82,41 @@ class TvEventClient private constructor(private val socket: Socket) {
     lateinit var capabilities: TvCapabilities
         private set
 
+    /**
+     * v2: TV'nin verdiği yeniden bağlanma jetonu (yalnız TV destekliyorsa,
+     * bkz. [TvCapabilities.supportsResume]). Bağlantı koparsa
+     * [connect]'e `resumeToken` olarak verilerek yeni kod okutmadan geri
+     * bağlanılır.
+     */
+    var resumeToken: String? = null
+        private set
+
     /** Gönderimi başarılıysa `true`, bağlantı/akış hatasında `false` döner. */
-    fun send(event: CueEvent): Boolean {
+    fun send(event: CueEvent): Boolean = writeLine { sequence ->
+        CueEventCodec.encode(event, sequence, epochId)
+    }
+
+    /** v2: TV'deki altyazıyı kaldırır. TV desteklemiyorsa hiçbir şey göndermez, `false` döner. */
+    fun sendClear(): Boolean {
+        if (!capabilities.supportsClear) return false
+        return writeLine { sequence -> ControlMessageCodec.encode(ControlType.CLEAR, sequence, epochId) }
+    }
+
+    /**
+     * v2: nabız. TV desteklemiyorsa yalnız soketin açık olup olmadığını döner.
+     * Yazma başarısızsa (`false`) bağlantı kopmuş demektir.
+     */
+    fun sendPing(): Boolean {
+        if (!capabilities.supportsHeartbeat) return isConnected
+        return writeLine { sequence -> ControlMessageCodec.encode(ControlType.PING, sequence, epochId) }
+    }
+
+    // Sıra numarası alma + yazma tek kilit altında: aynı anda iki iş
+    // parçacığından gönderilse bile satırlar sıra numarası sırasıyla çıkar.
+    @Synchronized
+    private fun writeLine(build: (sequence: Long) -> String): Boolean {
         return try {
-            writer.write(CueEventCodec.encode(event, sequenceCounter.getAndIncrement(), epochId))
+            writer.write(build(sequenceCounter.getAndIncrement()))
             writer.newLine()
             writer.flush()
             true
@@ -112,6 +143,8 @@ class TvEventClient private constructor(private val socket: Socket) {
             pairingCode: String? = null,
             expectedFingerprintSha256: String? = null,
             timeoutMs: Int = 4000,
+            // v2: verilirse PAIR yerine RESUME el sıkışması yapılır (bkz. TvEventServer).
+            resumeToken: String? = null,
         ): TvEventClient? {
             return try {
                 val plainSocket = Socket()
@@ -135,9 +168,14 @@ class TvEventClient private constructor(private val socket: Socket) {
                 sslSocket.startHandshake()
 
                 val client = TvEventClient(sslSocket)
-                if (pairingCode != null) {
+                val handshake = when {
+                    resumeToken != null -> "${TvEventServer.RESUME_PREFIX}$resumeToken"
+                    pairingCode != null -> "${TvEventServer.PAIR_PREFIX}$pairingCode"
+                    else -> null
+                }
+                if (handshake != null) {
                     val accepted = try {
-                        client.writer.write("${TvEventServer.PAIR_PREFIX}$pairingCode")
+                        client.writer.write(handshake)
                         client.writer.newLine()
                         client.writer.flush()
                         // Sunucunun handshake'i GERÇEKTEN doğruladığını
@@ -171,6 +209,15 @@ class TvEventClient private constructor(private val socket: Socket) {
                     return null
                 }
                 client.capabilities = capabilities
+
+                // v2: TV yeniden bağlanma jetonu veriyorsa bir sonraki satırdır.
+                if (capabilities.supportsResume) {
+                    val tokenLine = runCatching { client.reader.readLine() }.getOrNull()
+                    client.resumeToken = tokenLine
+                        ?.takeIf { it.startsWith(TvEventServer.RESUME_TOKEN_PREFIX) }
+                        ?.removePrefix(TvEventServer.RESUME_TOKEN_PREFIX)
+                        ?.takeIf { it.isNotBlank() }
+                }
 
                 sslSocket.soTimeout = 0
                 client
