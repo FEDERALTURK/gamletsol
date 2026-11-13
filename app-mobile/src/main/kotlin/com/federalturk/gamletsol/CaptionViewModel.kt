@@ -10,13 +10,17 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.viewModelScope
 import com.federalturk.gamletsol.core.model.GameProfile
 import com.federalturk.gamletsol.core.model.SampleGameProfiles
+import com.federalturk.gamletsol.core.model.TranslationLinePack
 import com.federalturk.gamletsol.core.pipeline.CaptionPipeline
+import com.federalturk.gamletsol.core.pipeline.LinePackIndex
+import com.federalturk.gamletsol.core.pipeline.LinePackTranslator
 import com.federalturk.gamletsol.core.pipeline.TermPreservingTranslator
 import com.federalturk.gamletsol.feature.capture.CameraXFrameSource
 import com.federalturk.gamletsol.ocr.MlKitTextRecognizer
 import com.federalturk.gamletsol.speech.AndroidTtsSpeechOutput
 import com.federalturk.gamletsol.speech.TurkishVoiceStatus
 import com.federalturk.gamletsol.translate.MlKitTranslator
+import com.federalturk.gamletsol.translate.TranslationLibraryStore
 import com.federalturk.gamletsol.tv.TvRelaySubtitleSink
 import com.federalturk.gamletsol.ui.PhoneScreenSubtitleSink
 import java.util.concurrent.Executors
@@ -136,13 +140,61 @@ class CaptionViewModel(application: Application) : AndroidViewModel(application)
     // seçiliyse) profildeki buton/istatistik/isim terimlerini ML Kit'e
     // vermeden önce maskeler, çeviri sonrası geri yükler (bkz. core-pipeline
     // TermPreservingTranslator KDoc'u).
-    private val translator = TermPreservingTranslator(rawTranslator) { _activeGameProfile.value }
+    private val liveTranslator = TermPreservingTranslator(rawTranslator) { _activeGameProfile.value }
+
+    // Çeviri kütüphanesi (2026-11-13, yol haritası G073'ün uygulamaya
+    // bağlanması). Bir satır şu sırayla aranır:
+    //   1) kullanıcının kişisel düzeltmeleri,
+    //   2) gömülü genel oyun ifadeleri (menü/sistem iletileri, tuş istemleri,
+    //      kısa diyaloglar),
+    //   3) bulunamazsa ML Kit ile canlı (cihaz-üstü) çeviri.
+    // Kütüphanede bulunan satır canlı çeviriye hiç gitmez (daha hızlı ve
+    // tutarlı). Önek eşleşmesi bu genel kütüphanelerde kapalı — bkz.
+    // LinePackTranslator KDoc'u.
+    private val libraryStore = TranslationLibraryStore(application)
+    private val translator = LinePackTranslator(
+        delegate = LinePackTranslator(
+            delegate = liveTranslator,
+            minPrefixLength = LinePackIndex.PREFIX_MATCH_DISABLED,
+        ) { libraryStore.builtinPack },
+        minPrefixLength = LinePackIndex.PREFIX_MATCH_DISABLED,
+    ) { libraryStore.personal.snapshot() }
+
+    /** Kişisel çeviri kütüphanesi (arayüzdeki "Çeviri kütüphanem" listesi için). */
+    val personalLibrary: StateFlow<TranslationLinePack> = libraryStore.personalSnapshot
+
+    /** Gömülü genel ifadeler kütüphanesindeki satır sayısı (yüklenmediyse 0). */
+    private val _builtinLibrarySize = MutableStateFlow(0)
+    val builtinLibrarySize: StateFlow<Int> = _builtinLibrarySize.asStateFlow()
+
+    /**
+     * Kullanıcının ekrandaki bir çeviriyi düzeltmesi: [sourceText] bir daha
+     * görüldüğünde [translatedText] gösterilir. Ekranda duran satır da
+     * hemen (sonraki kararlı karede) güncellenir.
+     */
+    fun saveTranslationCorrection(sourceText: String, translatedText: String) {
+        if (sourceText.isBlank() || translatedText.isBlank()) return
+        viewModelScope.launch { libraryStore.saveCorrection(sourceText, translatedText) }
+    }
+
+    fun removeTranslationCorrection(sourceText: String) {
+        viewModelScope.launch { libraryStore.removeCorrection(sourceText) }
+    }
+
+    fun clearTranslationLibrary() {
+        viewModelScope.launch { libraryStore.clearPersonal() }
+    }
     private val speechOutput = AndroidTtsSpeechOutput(application)
 
     private val _turkishVoiceStatusMessage = MutableStateFlow<String?>(null)
     val turkishVoiceStatusMessage: StateFlow<String?> = _turkishVoiceStatusMessage.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            libraryStore.load()
+            _builtinLibrarySize.value = libraryStore.builtinPack?.lines?.size ?: 0
+        }
+
         // G032: TTS motoru asenkron başlatılıyor (TextToSpeech constructor'ı
         // hazır olana kadar `ready=false`) — bu yüzden durum birkaç kez
         // (kısa aralıklarla, en fazla ~2 sn) yoklanır; ilk "NotYetInitialized"
@@ -253,6 +305,9 @@ class CaptionViewModel(application: Application) : AndroidViewModel(application)
                 translator = translator,
                 sinks = listOf(subtitleSink, tvRelaySink),
                 speechOutput = speechOutput,
+                // Kütüphane değişince (yüklendi / düzeltme eklendi) önbellek
+                // eski çeviriyi göstermesin, ekrandaki satır yeniden çevrilsin.
+                cacheVersionTag = libraryStore::versionTag,
                 onTranslationError = {
                     // Model henüz inmediyse kullanıcıya bunu göster; aksi halde
                     // tek seferlik geçici hata — sonraki karede yeniden denenir.

@@ -24,6 +24,11 @@ import com.federalturk.gamletsol.core.model.TranslationLinePack
  */
 class LinePackTranslator(
     private val delegate: Translator,
+    // Genel amaçlı kütüphanelerde (gömülü genel ifadeler, kişisel düzeltmeler)
+    // önek eşleşmesi kapatılır: daktilo efektiyle yazılmakta olan "Let's get…"
+    // gibi yarım bir satır, alakasız bir hazır cümleyle ("Let's get out of
+    // here") yanlışlıkla eşleşmesin. Oyuna özel tam paketlerde (X6) açıktır.
+    private val minPrefixLength: Int = LinePackIndex.DEFAULT_MIN_PREFIX_LENGTH,
     private val activePack: () -> TranslationLinePack?,
 ) : Translator {
 
@@ -47,7 +52,7 @@ class LinePackTranslator(
         if (existing != null && cachedPackVersionTag == pack.versionTag) {
             return existing
         }
-        val built = LinePackIndex(pack)
+        val built = LinePackIndex(pack, minPrefixLength)
         cachedPackVersionTag = pack.versionTag
         cachedIndex = built
         return built

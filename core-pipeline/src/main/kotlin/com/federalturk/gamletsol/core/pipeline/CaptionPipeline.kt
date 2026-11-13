@@ -68,6 +68,12 @@ class CaptionPipeline(
     private var pendingCandidate: PendingCandidate? = null
     private var consecutiveEmptyFrames = 0
     private var activeCue: Cue? = null
+
+    // Aktif cue'nun çevirisi üretilirken geçerli olan cacheVersionTag. Etiket
+    // değişirse (ör. kullanıcı çeviri kütüphanesine düzeltme ekledi) ekranda
+    // DURAN aynı satır da yeniden çevrilir — yoksa düzeltme ancak satır
+    // değişince görünürdü.
+    private var activeCueTag: String? = null
     private var nextSeq = 0L
     private val translationCache = object : LinkedHashMap<String, String>(64, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean =
@@ -127,15 +133,22 @@ class CaptionPipeline(
         val current = activeCue
         val continuedCue = current?.takeIf { isStableMatch(it.originalText, text) }
 
-        // Aynı cue, metin birebir aynı: çeviriye gerek yok, yalnız TTL'i yenile.
-        if (continuedCue != null && continuedCue.originalText == text && !continuedCue.translatedText.isNullOrBlank()) {
+        val tag = cacheVersionTag()
+
+        // Aynı cue, metin birebir aynı ve kütüphane/sözlük değişmedi: çeviriye
+        // gerek yok, yalnız TTL'i yenile.
+        if (continuedCue != null &&
+            continuedCue.originalText == text &&
+            !continuedCue.translatedText.isNullOrBlank() &&
+            activeCueTag == tag
+        ) {
             val refreshed = continuedCue.copy(frame = frame.ref, createdAtMillis = clock(), ttlMillis = cueTtlMillis)
             activeCue = refreshed
             sinks.forEach { it.show(refreshed) }
             return
         }
 
-        val translated = translateCached(text) ?: return
+        val translated = translateCached(text, tag) ?: return
 
         val cue = if (continuedCue != null) {
             // Aynı altyazı ekranda kalıyor ama metni değişti (daktilo efekti,
@@ -166,6 +179,7 @@ class CaptionPipeline(
         }
 
         activeCue = cue
+        activeCueTag = tag
         sinks.forEach { it.show(cue) }
         if (continuedCue == null) {
             speechOutput?.speak(cue)
@@ -173,8 +187,8 @@ class CaptionPipeline(
     }
 
     /** Başarısız çeviri `null` döner ve cache'e YAZILMAZ — sonraki stabil karede tekrar denenir. */
-    private suspend fun translateCached(text: String): String? {
-        val cacheKey = "$text|${cacheVersionTag()}"
+    private suspend fun translateCached(text: String, tag: String): String? {
+        val cacheKey = "$text|$tag"
         translationCache[cacheKey]?.let { return it }
         val translated = try {
             translator.translate(text, sourceLanguageCode, targetLanguageCode)

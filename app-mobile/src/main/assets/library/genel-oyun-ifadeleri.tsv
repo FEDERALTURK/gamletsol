@@ -1,0 +1,201 @@
+#gamletsol-linepack 1
+#packId=genel-oyun-ifadeleri
+#gameProfileId=genel
+#version=1
+# GAMLETSOL gömülü çeviri kütüphanesi — oyunlarda sık görülen genel ifadeler.
+# Çeviriler GAMLETSOL için özgün olarak yazılmıştır; başka bir ürünün
+# verisinden alınmamıştır. Biçim: kaynak<TAB>çeviri. {0} bir tuş adı gibi
+# kısa bir parçayı yakalar ve çeviride aynı yere konur.
+# Eşleşme büyük/küçük harf, fazladan boşluk ve sondaki noktalama farkını
+# yok sayar ("LOADING...", "Loading…" ve "Loading" aynı satırdır).
+
+# --- Tuş istemleri (kalıplar) ---
+Press {0} to continue	Devam etmek için {0} tuşuna basın
+Press {0} to skip	Geçmek için {0} tuşuna basın
+Hold {0} to skip	Geçmek için {0} tuşunu basılı tutun
+Press {0} to interact	Etkileşim için {0} tuşuna basın
+Hold {0} to interact	Etkileşim için {0} tuşunu basılı tutun
+Press {0} to open	Açmak için {0} tuşuna basın
+Hold {0} to open	Açmak için {0} tuşunu basılı tutun
+Press {0} to pick up	Almak için {0} tuşuna basın
+Press {0} to talk	Konuşmak için {0} tuşuna basın
+Press {0} to use	Kullanmak için {0} tuşuna basın
+Press {0} to start	Başlamak için {0} tuşuna basın
+Press {0} to confirm	Onaylamak için {0} tuşuna basın
+Press {0} to go back	Geri dönmek için {0} tuşuna basın
+Press {0} to return	Geri dönmek için {0} tuşuna basın
+Press {0} to climb	Tırmanmak için {0} tuşuna basın
+Press {0} to jump	Zıplamak için {0} tuşuna basın
+Press {0} to sprint	Koşmak için {0} tuşuna basın
+Press {0} to crouch	Eğilmek için {0} tuşuna basın
+Press {0} to reload	Şarjör değiştirmek için {0} tuşuna basın
+Press {0} to search	Aramak için {0} tuşuna basın
+Press {0} to loot	Ganimeti almak için {0} tuşuna basın
+Press {0} to revive	Canlandırmak için {0} tuşuna basın
+Hold {0} to revive	Canlandırmak için {0} tuşunu basılı tutun
+Press {0} to read	Okumak için {0} tuşuna basın
+Press {0} to examine	İncelemek için {0} tuşuna basın
+Press {0} to enter	Girmek için {0} tuşuna basın
+Press {0} to exit	Çıkmak için {0} tuşuna basın
+Press any button	Herhangi bir tuşa basın
+Press any button to continue	Devam etmek için herhangi bir tuşa basın
+Press any key	Herhangi bir tuşa basın
+Press any key to continue	Devam etmek için herhangi bir tuşa basın
+Press start	Başlat tuşuna basın
+Hold to skip	Geçmek için basılı tutun
+
+# --- Sistem ve menü ---
+Loading	Yükleniyor
+Saving	Kaydediliyor
+Autosaving	Otomatik kaydediliyor
+Game saved	Oyun kaydedildi
+Progress saved	İlerleme kaydedildi
+Do not turn off the console while this icon is displayed	Bu simge görünürken konsolu kapatmayın
+Do not turn off your system while this icon is displayed	Bu simge görünürken sistemi kapatmayın
+Checkpoint	Kontrol noktası
+Checkpoint reached	Kontrol noktasına ulaşıldı
+Continue	Devam et
+New game	Yeni oyun
+Load game	Oyun yükle
+Save game	Oyunu kaydet
+Settings	Ayarlar
+Options	Seçenekler
+Quit	Çık
+Quit game	Oyundan çık
+Exit	Çıkış
+Resume	Devam et
+Restart	Yeniden başlat
+Restart from last checkpoint	Son kontrol noktasından yeniden başla
+Retry	Tekrar dene
+Try again	Tekrar dene
+Back	Geri
+Confirm	Onayla
+Cancel	İptal
+Yes	Evet
+No	Hayır
+Are you sure?	Emin misin?
+Are you sure you want to quit?	Çıkmak istediğinden emin misin?
+Any unsaved progress will be lost	Kaydedilmemiş ilerleme kaybolacak
+Unsaved progress will be lost	Kaydedilmemiş ilerleme kaybolacak
+Difficulty	Zorluk
+Easy	Kolay
+Normal	Normal
+Hard	Zor
+Paused	Duraklatıldı
+Pause	Duraklat
+Map	Harita
+Inventory	Envanter
+Equipment	Ekipman
+Skills	Yetenekler
+Journal	Günlük
+Objectives	Hedefler
+Accept	Kabul et
+Decline	Reddet
+Skip	Geç
+Connection lost	Bağlantı koptu
+Connecting	Bağlanıyor
+Searching for players	Oyuncu aranıyor
+Waiting for players	Oyuncular bekleniyor
+Victory	Zafer
+Defeat	Yenilgi
+
+# --- Oyun durumu ---
+Game over	Oyun bitti
+You died	Öldün
+You are dead	Öldün
+Mission complete	Görev tamamlandı
+Mission accomplished	Görev tamamlandı
+Mission failed	Görev başarısız
+Quest completed	Görev tamamlandı
+Quest updated	Görev güncellendi
+New quest	Yeni görev
+Objective updated	Hedef güncellendi
+Objective complete	Hedef tamamlandı
+New objective	Yeni hedef
+Level up	Seviye atladın
+New skill unlocked	Yeni yetenek açıldı
+Skill point available	Kullanılabilir yetenek puanın var
+Achievement unlocked	Başarım açıldı
+Trophy unlocked	Kupa kazanıldı
+Inventory full	Envanter dolu
+Not enough money	Yeterli paran yok
+Insufficient funds	Yetersiz bakiye
+Out of ammo	Mermi bitti
+Low health	Canın azaldı
+Item acquired	Eşya alındı
+Item obtained	Eşya alındı
+New item	Yeni eşya
+
+# --- Sık diyalog ve çatışma ifadeleri ---
+Follow me	Beni takip et
+Let's go	Hadi gidelim
+Let's move	Hadi, ilerleyelim
+Move out	Harekete geçin!
+Watch out	Dikkat et!
+Look out	Dikkat!
+Get down	Eğil!
+Take cover	Siper al!
+Cover me	Beni koru!
+Over here	Buraya!
+This way	Bu taraftan
+Hurry up	Acele et!
+Stay close	Yakınımda kal
+Stay here	Burada kal
+Wait here	Burada bekle
+Hold on	Bekle
+Wait	Bekle
+Stop	Dur
+Help me	Yardım et!
+I'm hit	Vuruldum!
+Man down	Yaralı var!
+Reloading	Şarjör değiştiriyorum!
+Grenade	El bombası!
+Enemy spotted	Düşman görüldü
+Area clear	Bölge temiz
+All clear	Bölge temiz
+Fall back	Geri çekilin!
+Open fire	Ateş açın!
+Hold your fire	Ateş etmeyin!
+Cease fire	Ateşi kesin!
+We're surrounded	Etrafımız sarıldı!
+Reinforcements are coming	Takviye geliyor!
+Go go go	Hadi hadi hadi!
+It's a trap	Bu bir tuzak!
+Let's get out of here	Hadi buradan çıkalım
+We need to move	Harekete geçmeliyiz
+We have to go	Gitmemiz lazım
+What was that?	O da neydi?
+Who are you?	Sen kimsin?
+What do you want?	Ne istiyorsun?
+Where are you?	Neredesin?
+Are you okay?	İyi misin?
+Are you alright?	İyi misin?
+I'm fine	İyiyim
+I don't know	Bilmiyorum
+I know	Biliyorum
+Thank you	Teşekkürler
+Thanks	Sağ ol
+Sorry	Üzgünüm
+Okay	Tamam
+OK	Tamam
+Come on	Hadi!
+Be careful	Dikkatli ol
+Good job	İyi iş
+Nice work	İyi iş
+Nice shot	Güzel atış
+Damn it	Lanet olsun
+Let's do this	Hadi yapalım şunu
+Leave me alone	Beni rahat bırak
+Don't move	Kıpırdama!
+Freeze	Kıpırdama!
+Drop your weapon	Silahını bırak!
+Hands up	Eller yukarı!
+Not now	Şimdi değil
+Trust me	Bana güven
+Listen to me	Beni dinle
+Get out	Çık dışarı!
+Get in	Bin!
+Get in the car	Arabaya bin!
+Let me go	Bırak beni!
+Shut up	Kes sesini!
+Calm down	Sakin ol

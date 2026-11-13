@@ -1,6 +1,6 @@
 # GAMLETSOL — Kurulum ve Kullanım Kılavuzu
 
-*Son güncelleme: 2026-11-13 — yatay kullanım, altyazı çerçevesi (OCR bandı), çevirinin ekranın üstünde gösterilmesi ve yeni sorun giderme satırları eklendi.*
+*Son güncelleme: 2026-11-13 — çeviri kütüphanesi, yatay kullanım, altyazı çerçevesi (OCR bandı), çevirinin ekranın üstünde gösterilmesi ve yeni sorun giderme satırları eklendi.*
 
 > Bu belge, GAMLETSOL'un ne olduğunu, nasıl çalıştığını, nasıl kurulacağını
 > ve nasıl kullanılacağını adım adım anlatır. Kod/mimari detayları için kök
@@ -181,8 +181,28 @@ Telefonunuzda Google Play dışından bir APK kurmak için:
    ilgili bir uyarı görürsünüz). Altyazı satırı ekranda uzarsa (harf harf
    yazılan altyazılar) çeviri de güncellenir.
 5. Sağ üstteki **menü (⋮)** şunları içerir: **"TV'ye Yansıt"**,
-   **"Kurulum talimatları"**, **"Gizlilik ve nasıl çalışır"**,
+   **"Çeviri kütüphanem"**, **"Kurulum talimatları"**, **"Gizlilik ve nasıl çalışır"**,
    **"Tanıtımı yeniden göster"**, **"Hakkında / yol haritası durumu"**.
+
+### Çeviri kütüphanesi
+
+Uygulama bir satırı çevirirken önce kendi **çeviri kütüphanesine** bakar,
+orada yoksa cihaz-üstü canlı çeviriyi kullanır. Kütüphaneden gelen çeviri
+anında ve her seferinde aynı çıkar.
+
+- **Hazır ifadeler:** Uygulamayla birlikte oyunlarda sık görülen yaklaşık
+  180 ifade gelir — menü ve sistem iletileri ("Loading", "Checkpoint
+  reached", "Game over"), tuş istemleri ("Press X to continue" → "Devam
+  etmek için X tuşuna basın"; tuş adı ne olursa olsun) ve sık kullanılan
+  kısa diyaloglar ("Get down!" → "Eğil!", "Take cover!" → "Siper al!").
+  Büyük/küçük harf ve sondaki noktalama farkı önemli değildir.
+- **Kendi düzeltmelerin:** Ekrandaki çeviri yanlışsa çeviri kutusuna
+  **dokun** → doğru Türkçesini yaz → **Kaydet**. Aynı İngilizce satır bir
+  daha göründüğünde senin çevirin gösterilir (ekranda duran satır da hemen
+  güncellenir). Düzeltmeler telefonda saklanır, uygulamayı kapatıp açınca
+  kaybolmaz, hiçbir yere gönderilmez.
+- **Yönetme:** Menü (⋮) → **"Çeviri kütüphanem"**: düzeltmelerini listeler;
+  tek tek **"Sil"** ya da **"Tümünü sil"**.
 
 ## 6. Kurulum — Android TV / Google TV (app-tv)
 
@@ -344,9 +364,10 @@ itibariyle **henüz yapılmamış/doğrulanmamış** olanlar:
   seslendirme yok.
 - **Oyun profili seçimi arayüzde yok:** Oyun türüne göre terim koruma
   altyapısı kodda var ama uygulamada henüz bir seçim ekranı yok.
-- **Oyuna özel hazır çeviri paketleri yok:** Altyapısı kodda başladı
-  (yol haritası G073), ancak henüz hiçbir oyun için paket üretilmedi;
-  tüm çeviriler canlı (cihaz-üstü) yapılır.
+- **Oyuna özel hazır çeviri paketleri yok:** Genel ifadeler kütüphanesi ve
+  kişisel düzeltmeler var (bkz. "Çeviri kütüphanesi"), ancak belirli bir
+  oyunun tüm diyaloglarını kapsayan bir paket henüz üretilmedi (yol
+  haritası G074–G076); kütüphanede olmayan satırlar canlı çevrilir.
 - **Otomatik yeniden bağlanma yok** — bağlantı koptuğunda "TV'ye
   Yansıt"ı elle yeniden açmanız gerekir.
 - **Ücretli/Pro katman ayrımı henüz uygulanmadı** — tüm özellikler şu an

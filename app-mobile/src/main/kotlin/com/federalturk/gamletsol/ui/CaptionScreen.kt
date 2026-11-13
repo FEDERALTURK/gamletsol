@@ -3,6 +3,12 @@ package com.federalturk.gamletsol.ui
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.compose.foundation.background
+import com.federalturk.gamletsol.core.pipeline.LinePackIndex
+import com.federalturk.gamletsol.core.model.TranslationLine
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.clickable
 import android.view.Surface
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.foundation.verticalScroll
@@ -102,6 +108,13 @@ fun CaptionScreen(
     // başlatılıyor) hiçbir şey gösterilmez (bkz. CaptionViewModel KDoc'u).
     val turkishVoiceStatusMessage by viewModel.turkishVoiceStatusMessage.collectAsState()
     var scanningQr by remember { mutableStateOf(false) }
+
+    // Çeviri kütüphanesi (2026-11-13): ekrandaki çeviriye dokunup düzeltme
+    // ve menüden kütüphaneyi yönetme.
+    val personalLibrary by viewModel.personalLibrary.collectAsState()
+    val builtinLibrarySize by viewModel.builtinLibrarySize.collectAsState()
+    var correctionTarget by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var showLibrary by remember { mutableStateOf(false) }
 
     // G025: NSD/mDNS taraması — ekran açık olduğu sürece arka planda
     // çalışır (QR tarama/kamera ile ÇAKIŞMAZ, NsdManager kamerayı
@@ -206,13 +219,49 @@ fun CaptionScreen(
                 rememberNewTv = rememberNewTv,
                 onRememberNewTvChanged = { rememberNewTv = it },
                 onForgetTrustedTv = { fingerprint -> trustedTvs = TrustedTvStore.forget(context, fingerprint) },
+                onOpenLibrary = { showLibrary = true },
             )
 
             val translated = cue?.translatedText
             if (granted && !translated.isNullOrBlank()) {
-                SubtitleOverlay(original = cue?.originalText, translated = translated)
+                SubtitleOverlay(
+                    original = cue?.originalText,
+                    translated = translated,
+                    onClick = {
+                        val original = cue?.originalText
+                        if (!original.isNullOrBlank()) correctionTarget = original to translated
+                    },
+                )
             } else if (granted) {
                 StatusChip(status = status, voiceStatusMessage = turkishVoiceStatusMessage)
+            }
+
+            correctionTarget?.let { (original, current) ->
+                val saved = personalLibrary.lines.any { LinePackIndex.matchKey(it.sourceText) == LinePackIndex.matchKey(original) }
+                TranslationCorrectionDialog(
+                    original = original,
+                    currentTranslation = current,
+                    hasSavedCorrection = saved,
+                    onSave = { corrected ->
+                        viewModel.saveTranslationCorrection(original, corrected)
+                        correctionTarget = null
+                    },
+                    onRemove = {
+                        viewModel.removeTranslationCorrection(original)
+                        correctionTarget = null
+                    },
+                    onDismiss = { correctionTarget = null },
+                )
+            }
+
+            if (showLibrary) {
+                TranslationLibraryDialog(
+                    lines = personalLibrary.lines,
+                    builtinLibrarySize = builtinLibrarySize,
+                    onRemove = viewModel::removeTranslationCorrection,
+                    onClearAll = viewModel::clearTranslationLibrary,
+                    onDismiss = { showLibrary = false },
+                )
             }
         }
     }
@@ -232,6 +281,7 @@ private fun BoxScope.TopBar(
     rememberNewTv: Boolean,
     onRememberNewTvChanged: (Boolean) -> Unit,
     onForgetTrustedTv: (String) -> Unit,
+    onOpenLibrary: () -> Unit,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     var dialog by remember { mutableStateOf<MenuDialog?>(null) }
@@ -268,6 +318,13 @@ private fun BoxScope.TopBar(
                     onClick = {
                         menuExpanded = false
                         dialog = MenuDialog.TV_CONNECT
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("Çeviri kütüphanem") },
+                    onClick = {
+                        menuExpanded = false
+                        onOpenLibrary()
                     },
                 )
                 DropdownMenuItem(
@@ -680,7 +737,7 @@ private fun CameraPreview(viewModel: CaptionViewModel) {
 }
 
 @Composable
-private fun BoxScope.SubtitleOverlay(original: String?, translated: String) {
+private fun BoxScope.SubtitleOverlay(original: String?, translated: String, onClick: () -> Unit) {
     // 2026-11-13: üste taşındı — eskiden alttaydı ve tam da altyazının
     // okunduğu bandın üstünü kapatıyordu (kullanıcı neye nişan aldığını
     // göremiyordu).
@@ -691,6 +748,7 @@ private fun BoxScope.SubtitleOverlay(original: String?, translated: String) {
             .widthIn(max = OVERLAY_MAX_WIDTH)
             .fillMaxWidth()
             .background(Color.Black.copy(alpha = 0.65f))
+            .clickable(onClickLabel = "Çeviriyi düzelt", onClick = onClick)
             .padding(12.dp),
     ) {
         Text(
@@ -705,6 +763,11 @@ private fun BoxScope.SubtitleOverlay(original: String?, translated: String) {
                 style = MaterialTheme.typography.bodySmall,
             )
         }
+        Text(
+            text = "Çeviriyi düzeltmek için dokunun",
+            color = Color.White.copy(alpha = 0.45f),
+            style = MaterialTheme.typography.labelSmall,
+        )
     }
 }
 
@@ -769,4 +832,123 @@ private fun SubtitleBandGuide(region: TextRegion = TextRegion.DEFAULT_SUBTITLE_B
             )
         }
     }
+}
+
+/**
+ * Ekrandaki bir çeviriyi düzeltme diyaloğu (çeviri kütüphanesi, 2026-11-13).
+ * Kaydedilen düzeltme kişisel kütüphaneye yazılır; aynı İngilizce satır bir
+ * daha görüldüğünde canlı çeviri yerine bu metin gösterilir.
+ */
+@Composable
+private fun TranslationCorrectionDialog(
+    original: String,
+    currentTranslation: String,
+    hasSavedCorrection: Boolean,
+    onSave: (String) -> Unit,
+    onRemove: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var corrected by remember(original) { mutableStateOf(currentTranslation) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Çeviriyi düzelt") },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text("Orijinal:", style = MaterialTheme.typography.labelMedium)
+                Text(original, style = MaterialTheme.typography.bodyMedium)
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = corrected,
+                    onValueChange = { corrected = it },
+                    label = { Text("Türkçe çeviri") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "Bu satır bir daha görüldüğünde senin çevirin gösterilir. " +
+                        "Kütüphane yalnızca bu telefonda saklanır.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                if (hasSavedCorrection) {
+                    TextButton(onClick = onRemove) { Text("Kayıtlı düzeltmeyi kaldır") }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onSave(corrected) }, enabled = corrected.isNotBlank()) { Text("Kaydet") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Vazgeç") }
+        },
+    )
+}
+
+/** "Çeviri kütüphanem": kişisel düzeltmeleri listeler, tek tek veya toptan siler. */
+@Composable
+private fun TranslationLibraryDialog(
+    lines: List<TranslationLine>,
+    builtinLibrarySize: Int,
+    onRemove: (String) -> Unit,
+    onClearAll: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var confirmClear by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Çeviri kütüphanem") },
+        text = {
+            Column {
+                Text(
+                    "Hazır ifadeler: $builtinLibrarySize satır (menü ve sistem iletileri, " +
+                        "tuş istemleri, sık kullanılan kısa diyaloglar).",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                if (lines.isEmpty()) {
+                    Text(
+                        "Henüz kendi düzeltmen yok. Ekranda yanlış bir çeviri görürsen " +
+                            "üzerine dokunup düzeltebilirsin.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                } else {
+                    Text("Senin düzeltmelerin (${lines.size}):", style = MaterialTheme.typography.labelMedium)
+                    LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
+                        items(lines.asReversed(), key = { LinePackIndex.matchKey(it.sourceText) }) { line ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(line.translatedText, style = MaterialTheme.typography.bodyMedium)
+                                    Text(
+                                        line.sourceText,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                TextButton(onClick = { onRemove(line.sourceText) }) { Text("Sil") }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismiss) { Text("Kapat") }
+        },
+        dismissButton = {
+            if (lines.isNotEmpty()) {
+                if (confirmClear) {
+                    TextButton(onClick = {
+                        onClearAll()
+                        confirmClear = false
+                    }) { Text("Evet, hepsini sil") }
+                } else {
+                    TextButton(onClick = { confirmClear = true }) { Text("Tümünü sil") }
+                }
+            }
+        },
+    )
 }
