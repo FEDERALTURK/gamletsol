@@ -3,6 +3,15 @@ package com.federalturk.gamletsol.ui
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.compose.foundation.background
+import android.view.Surface
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.offset
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -401,7 +410,9 @@ private fun TvConnectDialog(
         onDismissRequest = onDismiss,
         title = { Text("TV'ye Yansıt (beta)") },
         text = {
-            Column {
+            // Yatayda ekran yüksekliği az; elle giriş alanları açılınca içerik
+            // taşmasın diye kaydırılabilir.
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 if (connectionState != TvConnectionState.CONNECTED) {
                     // Birincil akış, tam olarak Game Caption'daki gibi: TV
                     // ekranındaki QR'ı tarayıp bağlan. Tek, büyük düğme.
@@ -568,8 +579,9 @@ private fun BoxScope.StatusChip(status: PipelineStatus, voiceStatusMessage: Stri
     Column(
         modifier = Modifier
             .align(Alignment.TopCenter)
-            .fillMaxWidth()
             .padding(start = 16.dp, end = 16.dp, top = OVERLAY_TOP_PADDING)
+            .widthIn(max = OVERLAY_MAX_WIDTH)
+            .fillMaxWidth()
             .background(Color.Black.copy(alpha = 0.5f))
             .padding(12.dp),
     ) {
@@ -592,7 +604,8 @@ private fun InfoDialog(title: String, body: String, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
-        text = { Text(body) },
+        // Yatayda ekran yüksekliği az — uzun metin kesilmesin diye kaydırılabilir.
+        text = { Text(body, modifier = Modifier.verticalScroll(rememberScrollState())) },
         confirmButton = {
             Button(onClick = onDismiss) { Text("Tamam") }
         },
@@ -624,24 +637,36 @@ private fun PermissionRequestContent(onRequestCameraPermission: () -> Unit) {
 
 @Composable
 private fun CameraPreview(viewModel: CaptionViewModel) {
-    val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val view = LocalView.current
 
     AndroidView(
         modifier = Modifier.fillMaxSize(),
         factory = { ctx ->
-            val previewView = PreviewView(ctx)
+            // FIT_CENTER (2026-11-13): önizleme, OCR'a giden karenin TAMAMINI
+            // kırpmadan gösterir — kullanıcı tam olarak analiz edilen alanı
+            // görür ve altyazı çerçevesi hem dikeyde hem yatayda kareyle
+            // birebir hizalanır (bkz. SubtitleBandGuide).
+            val previewView = PreviewView(ctx).apply { scaleType = PreviewView.ScaleType.FIT_CENTER }
             val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
             cameraProviderFuture.addListener(
                 {
                     val cameraProvider = cameraProviderFuture.get()
-                    val preview = Preview.Builder().build().also {
-                        it.surfaceProvider = previewView.surfaceProvider
-                    }
+                    val preview = Preview.Builder()
+                        // Analiz de 4:3 istiyor (CameraXFrameSource) — oranlar
+                        // aynı olmazsa çerçeve ile okunan alan kayardı.
+                        .setResolutionSelector(
+                            ResolutionSelector.Builder()
+                                .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
+                                .build(),
+                        )
+                        .build()
+                        .also { it.surfaceProvider = previewView.surfaceProvider }
                     viewModel.bindCamera(
                         cameraProvider = cameraProvider,
                         lifecycleOwner = lifecycleOwner,
                         preview = preview,
+                        targetRotation = view.display?.rotation ?: Surface.ROTATION_0,
                     )
                 },
                 ContextCompat.getMainExecutor(ctx),
@@ -649,6 +674,9 @@ private fun CameraPreview(viewModel: CaptionViewModel) {
             previewView
         },
     )
+
+    // Yatay/dikey/ters-yatay geçişlerinde kamera use-case'lerinin dönüşünü güncelle.
+    DisplayRotationEffect { rotation -> viewModel.onDisplayRotationChanged(rotation) }
 }
 
 @Composable
@@ -659,8 +687,9 @@ private fun BoxScope.SubtitleOverlay(original: String?, translated: String) {
     Column(
         modifier = Modifier
             .align(Alignment.TopCenter)
-            .fillMaxWidth()
             .padding(start = 16.dp, end = 16.dp, top = OVERLAY_TOP_PADDING)
+            .widthIn(max = OVERLAY_MAX_WIDTH)
+            .fillMaxWidth()
             .background(Color.Black.copy(alpha = 0.65f))
             .padding(12.dp),
     ) {
@@ -682,28 +711,50 @@ private fun BoxScope.SubtitleOverlay(original: String?, translated: String) {
 /** Üst çubuğun altında kalacak şekilde, çeviri/durum kutusunun üst boşluğu. */
 private val OVERLAY_TOP_PADDING = 72.dp
 
+/** Yatayda çeviri kutusunun tüm genişliğe yayılıp görüntüyü kapatmaması için üst sınır. */
+private val OVERLAY_MAX_WIDTH = 640.dp
+
 /**
  * OCR'ın altyazı aradığı bandı ([TextRegion.DEFAULT_SUBTITLE_BAND]) kamera
  * önizlemesinin üstünde çerçeve olarak gösterir.
  *
- * Eşleme notu: Önizleme (`PreviewView`, varsayılan FILL_CENTER) ve analiz
- * aynı 4:3 kareyi kullanır. Dikey bir telefonda ekran 3:4'ten daha uzun
- * olduğu için önizleme yüksekliğe göre ölçeklenir, yanlardan kırpılır — yani
- * dikey konumlar (bandın üst/alt sınırı) ekran yüksekliğiyle birebir
- * örtüşür; yatayda ise bandın tamamı görünür genişliği kaplar. Bu
- * varsayımsal bir eşlemedir, gerçek cihazda piksel düzeyinde doğrulanmadı.
+ * Eşleme: Önizleme FIT_CENTER ile 4:3 karenin tamamını gösterir (dikeyde
+ * 3:4, yatayda 4:3 — analiz karesi de aynı dönüşle aynı oranda gelir). Bu
+ * fonksiyon görüntünün ekrandaki konumunu aynı FIT_CENTER hesabıyla bulur
+ * ve bandı o dikdörtgenin içine yerleştirir; böylece çerçeve hem dikey hem
+ * yatay kullanımda okunan alanla örtüşür. Kamera 4:3 desteklemeyip başka bir
+ * orana düşerse küçük bir kayma olabilir (gerçek cihazda doğrulanmadı).
  */
 @Composable
 private fun SubtitleBandGuide(region: TextRegion = TextRegion.DEFAULT_SUBTITLE_BAND) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val bandTop = maxHeight * region.top
-        val bandHeight = maxHeight * (region.bottom - region.top)
+        val viewWidth = maxWidth
+        val viewHeight = maxHeight
+        val landscape = viewWidth > viewHeight
+        val imageAspect = if (landscape) 4f / 3f else 3f / 4f // genişlik / yükseklik
+
+        val imageWidth: androidx.compose.ui.unit.Dp
+        val imageHeight: androidx.compose.ui.unit.Dp
+        if (viewWidth / viewHeight > imageAspect) {
+            imageHeight = viewHeight
+            imageWidth = viewHeight * imageAspect
+        } else {
+            imageWidth = viewWidth
+            imageHeight = viewWidth / imageAspect
+        }
+        val imageLeft = (viewWidth - imageWidth) / 2
+        val imageTop = (viewHeight - imageHeight) / 2
+
         Box(
             modifier = Modifier
-                .padding(top = bandTop)
-                .fillMaxWidth()
-                .height(bandHeight)
-                .padding(horizontal = 8.dp)
+                .offset(
+                    x = imageLeft + imageWidth * region.left,
+                    y = imageTop + imageHeight * region.top,
+                )
+                .size(
+                    width = imageWidth * (region.right - region.left),
+                    height = imageHeight * (region.bottom - region.top),
+                )
                 .border(width = 2.dp, color = Color.White.copy(alpha = 0.75f), shape = RoundedCornerShape(8.dp)),
         ) {
             Text(

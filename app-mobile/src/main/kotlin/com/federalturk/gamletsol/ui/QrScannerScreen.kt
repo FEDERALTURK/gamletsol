@@ -25,6 +25,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalView
+import android.view.Surface
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -67,27 +69,46 @@ fun QrScannerScreen(
     // göndermeyiz.
     var resolved by remember { mutableStateOf(false) }
 
+    val view = LocalView.current
+    // Yatay mod (2026-11-13): döndürmede use-case'lerin hedef dönüşünü
+    // güncellemek için referanslar; ayrıca tarayıcı ve iş parçacığı artık
+    // ekran kapanınca serbest bırakılıyor (önceden hiç kapatılmıyordu).
+    val scannerExecutor = remember { Executors.newSingleThreadExecutor() }
+    val scanner = remember {
+        BarcodeScanning.getClient(
+            BarcodeScannerOptions.Builder()
+                .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+                .build(),
+        )
+    }
+    var boundPreview by remember { mutableStateOf<Preview?>(null) }
+    var boundAnalysis by remember { mutableStateOf<ImageAnalysis?>(null) }
+
+    DisplayRotationEffect { rotation ->
+        boundPreview?.targetRotation = rotation
+        boundAnalysis?.targetRotation = rotation
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
                 val previewView = PreviewView(ctx)
                 val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
-                val scannerExecutor = Executors.newSingleThreadExecutor()
-                val scanner = BarcodeScanning.getClient(
-                    BarcodeScannerOptions.Builder()
-                        .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
-                        .build(),
-                )
+                val initialRotation = view.display?.rotation ?: Surface.ROTATION_0
                 cameraProviderFuture.addListener(
                     {
                         val cameraProvider = cameraProviderFuture.get()
-                        val preview = Preview.Builder().build().also {
-                            it.surfaceProvider = previewView.surfaceProvider
-                        }
+                        val preview = Preview.Builder()
+                            .setTargetRotation(initialRotation)
+                            .build()
+                            .also { it.surfaceProvider = previewView.surfaceProvider }
                         val analysis = ImageAnalysis.Builder()
                             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                            .setTargetRotation(initialRotation)
                             .build()
+                        boundPreview = preview
+                        boundAnalysis = analysis
                         analysis.setAnalyzer(scannerExecutor) { imageProxy ->
                             @Suppress("UnsafeOptInUsageError")
                             val mediaImage = imageProxy.image
@@ -131,7 +152,13 @@ fun QrScannerScreen(
         )
 
         DisposableEffect(Unit) {
-            onDispose { }
+            onDispose {
+                // Önce analizörü kaldır: aksi halde CameraX kapatılmış
+                // iş parçacığına kare göndermeye çalışabilir.
+                boundAnalysis?.clearAnalyzer()
+                scanner.close()
+                scannerExecutor.shutdown()
+            }
         }
 
         Column(

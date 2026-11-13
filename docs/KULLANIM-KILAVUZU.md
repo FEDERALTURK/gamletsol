@@ -1,6 +1,6 @@
 # GAMLETSOL — Kurulum ve Kullanım Kılavuzu
 
-*Son güncelleme: 2026-11-13 — altyazı çerçevesi (OCR bandı), çevirinin ekranın üstünde gösterilmesi ve yeni sorun giderme satırları eklendi.*
+*Son güncelleme: 2026-11-13 — yatay kullanım, altyazı çerçevesi (OCR bandı), çevirinin ekranın üstünde gösterilmesi ve yeni sorun giderme satırları eklendi.*
 
 > Bu belge, GAMLETSOL'un ne olduğunu, nasıl çalıştığını, nasıl kurulacağını
 > ve nasıl kullanılacağını adım adım anlatır. Kod/mimari detayları için kök
@@ -165,7 +165,11 @@ Telefonunuzda Google Play dışından bir APK kurmak için:
 
 1. Oyun/film/dizi ayarlarından **İngilizce altyazıyı açın**.
 2. Telefonu, altyazının göründüğü ekranı **net ve sabit** görecek şekilde
-   tutun (mümkünse bir stand/tripod kullanın).
+   tutun (mümkünse bir stand/tripod kullanın). Telefonu **dikey veya yatay**
+   tutabilirsiniz; telefonun otomatik döndürme ayarı açıksa uygulama da
+   döner. TV'yi kadraja sığdırmak için genelde **yatay** daha rahattır.
+   Kamera görüntüsü kırpılmadan gösterilir (kenarlarda siyah boşluk
+   olabilir) — gördüğünüz alan, okunan alanın tamamıdır.
 3. Kamera görüntüsünün alt kısmında beyaz bir çerçeve ve **"Altyazıyı bu
    çerçeveye getirin"** yazısı görürsünüz. Uygulama yalnızca **bu çerçevenin
    içindeki** yazıyı okur — telefonu, TV'deki altyazı satırı çerçevenin
@@ -311,6 +315,7 @@ kaybedersiniz.)
 | Elle giriş için TV'nin IP'sini göremiyorum | IP:port varsayılan ekranda gizlidir — TV'de sağ üstteki "Gelişmiş / Test modu"nu açın. |
 | TV ekranında çok fazla teknik yazı var | "Test modu: AÇIK" yazıyorsa düğmeye tekrar basıp kapatın. |
 | Çeviri gelmiyor, ilk açılış | Çeviri modeli ilk kullanımda indirilir — telefon Wi-Fi'ye bağlı olsun ve birkaç dakika bekleyin. İndirme başarısız olursa uygulama 15 saniyede bir kendiliğinden yeniden dener. |
+| Telefon yan çevrilince ekran dönmüyor | Telefonun hızlı ayarlarından **otomatik döndürme**yi açın (uygulama sistemin döndürme kilidine uyar). |
 | Çeviri bazen geliyor bazen gelmiyor | Altyazı satırının kamera görüntüsündeki beyaz çerçevenin **içinde** kaldığından emin olun; telefonu sabitleyin, TV'ye biraz yaklaşın ve parlamayı (yansımayı) azaltın. |
 | TV'de "bağlı" görünüyordu ama altyazı gelmiyor | Bağlantı koparsa telefon artık bunu "bağlantı başarısız" olarak gösterir — "TV'ye Yansıt" ile yeniden bağlanın. |
 | Çeviri sesli okunmuyor | Telefonun ayarlarında Türkçe metin okuma (TTS) sesinin kurulu olduğunu kontrol edin. |

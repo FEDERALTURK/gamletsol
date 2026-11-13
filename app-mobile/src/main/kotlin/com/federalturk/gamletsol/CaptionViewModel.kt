@@ -2,6 +2,7 @@ package com.federalturk.gamletsol
 
 import android.app.Application
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.lifecycle.AndroidViewModel
@@ -183,9 +184,25 @@ class CaptionViewModel(application: Application) : AndroidViewModel(application)
         _cameraPermissionGranted.value = granted
     }
 
-    /** Kamerayı [lifecycleOwner]'a bağlar ve (ilk çağrıda) hattı başlatır. */
-    fun bindCamera(cameraProvider: ProcessCameraProvider, lifecycleOwner: LifecycleOwner, preview: Preview) {
+    // Yatay mod desteği (2026-11-13): döndürmede Activity yeniden
+    // oluşturulmadığı için bağlı use-case'lerin hedef dönüşü elle
+    // güncellenir (bkz. [onDisplayRotationChanged], ui/DisplayRotation.kt).
+    private var boundPreview: Preview? = null
+    private var boundAnalysis: ImageAnalysis? = null
+
+    /**
+     * Kamerayı [lifecycleOwner]'a bağlar ve (ilk çağrıda) hattı başlatır.
+     * [targetRotation]: ekranın o anki dönüşü (`Surface.ROTATION_*`).
+     */
+    fun bindCamera(
+        cameraProvider: ProcessCameraProvider,
+        lifecycleOwner: LifecycleOwner,
+        preview: Preview,
+        targetRotation: Int,
+    ) {
         val analysis = frameSource.buildAnalysisUseCase(cameraExecutor)
+        analysis.targetRotation = targetRotation
+        preview.targetRotation = targetRotation
 
         cameraProvider.unbindAll()
         cameraProvider.bindToLifecycle(
@@ -194,8 +211,20 @@ class CaptionViewModel(application: Application) : AndroidViewModel(application)
             preview,
             analysis,
         )
+        boundPreview = preview
+        boundAnalysis = analysis
 
         startPipelineIfNeeded()
+    }
+
+    /**
+     * Ekran döndüğünde çağrılır. Analiz use-case'inin hedef dönüşü
+     * güncellenmezse kare OCR'a yan yatmış gider (ML Kit dönüşü
+     * `rotationDegrees`'ten okur) ve yatayda hiçbir yazı tanınmaz.
+     */
+    fun onDisplayRotationChanged(rotation: Int) {
+        boundPreview?.targetRotation = rotation
+        boundAnalysis?.targetRotation = rotation
     }
 
     private fun startPipelineIfNeeded() {

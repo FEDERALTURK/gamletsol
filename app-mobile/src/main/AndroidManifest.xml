@@ -1,5 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!-- Yakalama: kamerayı ekrana doğrultma (yol haritası "Yakalama" #1).
          Konsol bağlantısı (MediaProjection) ileride ayrı bir izin akışıyla
@@ -42,18 +41,18 @@
              ile çıkarılan altyazı metni, kullanıcı çeviriyi açtıysa ML Kit'in
              cihaz-üstü modeline (varsayılan) ya da ileride bir bulut çeviri
              servisine (P6, ayrı onay gerektirir) gider. -->
-        <!-- NOT (lint uyarısı, bilerek bastırıldı): `screenOrientation=
-             "portrait"` BİLEREK sabit — kamerayı ekrana doğrultma akışı
-             (OCR pipeline) tutarlı bir çerçeve için dikey kullanımı
-             varsayıyor; Chrome OS/katlanabilir/yatay destek bu MVP'nin
-             kapsamı DIŞINDA (gelecekte gerekirse ayrı bir karar). -->
+        <!-- Yön (2026-11-13): Uygulama artık dikey VE yatay kullanılabilir
+             (önceden `screenOrientation="portrait"` ile kilitliydi; kullanıcı
+             yatay kullanım istedi). Sistemin otomatik döndürme ayarına uyar.
+             `configChanges` nedeniyle döndürmede Activity yeniden
+             oluşturulmaz (kamera/çeviri hattı ve açık diyaloglar korunur);
+             CameraX use-case'lerinin hedef dönüşü bunun yerine
+             `DisplayRotationEffect` ile güncellenir. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
-            android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
-            android:screenOrientation="portrait"
-            tools:ignore="LockedOrientationActivity,DiscouragedApi">
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

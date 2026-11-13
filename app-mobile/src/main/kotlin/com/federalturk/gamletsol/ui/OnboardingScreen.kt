@@ -1,6 +1,8 @@
 package com.federalturk.gamletsol.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -87,7 +89,14 @@ fun OnboardingScreen(onDone: () -> Unit) {
             .padding(24.dp),
         verticalArrangement = Arrangement.SpaceBetween,
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+        // Yatayda yükseklik az: metin, alttaki düğmelerin üstüne taşmasın diye
+        // kalan alanı kaplayan kaydırılabilir bir sütunda.
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
+        ) {
             Spacer(modifier = Modifier.height(32.dp))
             Text(
                 text = page.title,
@@ -103,7 +112,7 @@ fun OnboardingScreen(onDone: () -> Unit) {
             )
         }
 
-        Column(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
             PageDots(count = pages.size, selected = pageIndex)
             Spacer(modifier = Modifier.height(20.dp))
             Row(
