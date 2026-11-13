@@ -21,7 +21,7 @@ android {
         // GitHub Actions çalışmasından/commit'ten geldiğini kendi üstünde
         // taşıyor (bkz. kök build.gradle.kts KDoc'u).
         versionCode = rootProject.extra["gamletsolVersionCode"] as Int
-        versionName = "0.2.0+" + rootProject.extra["gamletsolBuildMetadata"]
+        versionName = "0.3.0+" + rootProject.extra["gamletsolBuildMetadata"]
     }
 
     buildFeatures {

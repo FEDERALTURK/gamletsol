@@ -28,7 +28,7 @@ android {
         // G039: bkz. app-mobile/build.gradle.kts'teki aynı not + kök
         // build.gradle.kts.
         versionCode = rootProject.extra["gamletsolVersionCode"] as Int
-        versionName = "0.2.0-probe+" + rootProject.extra["gamletsolBuildMetadata"]
+        versionName = "0.3.0+" + rootProject.extra["gamletsolBuildMetadata"]
     }
 
     buildFeatures {
