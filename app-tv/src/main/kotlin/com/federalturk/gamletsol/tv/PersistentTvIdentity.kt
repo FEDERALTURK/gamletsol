@@ -1,9 +1,11 @@
 package com.federalturk.gamletsol.tv
 
+import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Log
 import com.federalturk.gamletsol.core.transport.TvTlsIdentity
+import java.io.File
 import java.math.BigInteger
 import java.security.KeyPairGenerator
 import java.security.KeyStore
@@ -13,99 +15,131 @@ import javax.net.ssl.KeyManagerFactory
 import javax.security.auth.x500.X500Principal
 
 /**
- * G029 kimlik kalıcılığı (2026-11-09): [TvTlsIdentity]'nin — ve dolayısıyla
- * TV'nin TLS sertifika fingerprint'inin — Android'in kendi `AndroidKeyStore`
- * sağlayıcısında (sistem genelinde, uygulama verisiyle BİRLİKTE silinmez,
- * donanım destekli olduğunda private key hiç dışarı ÇIKMAZ) KALICI olarak
- * saklanmasını sağlar. `app-tv` her açıldığında artık
- * [com.federalturk.gamletsol.core.transport.TvTlsIdentity.generate] (geçici,
- * her çağrıda YENİ) yerine [loadOrCreate] çağırır — bu, roadmap'in G029'da
- * istediği "bu TV'yi hatırla" özelliğinin asıl GEREKSİNDİĞİ koşulu
- * (fingerprint TV yeniden başlatılınca DEĞİŞMEMELİ) karşılar.
+ * TV'nin kalıcı TLS kimliği (yol haritası G024/G029): telefonun "hatırlanan
+ * TV" kaydı, TV'nin sertifika fingerprint'ine dayandığı için bu kimlik TV
+ * yeniden başlasa da AYNI kalmalıdır.
  *
- * NASIL ÇALIŞIR:
- * 1. [ALIAS] altında zaten bir anahtar çifti var mı diye `AndroidKeyStore`
- *    kontrol edilir.
- * 2. Yoksa, `KeyGenParameterSpec` ile YENİ bir RSA anahtar çifti ÜRETİLİR —
- *    Android'in kendisi, bu çağrı sırasında otomatik olarak kendi-imzalı
- *    bir X.509 sertifika da oluşturup aynı girişe ekler (resmi, belgeli
- *    bir Android davranışı — `setCertificateSubject`/`setCertificateSerialNumber`/
- *    `setCertificateNotBefore`/`setCertificateNotAfter` bu sertifikanın
- *    alanlarını belirler).
- * 3. Sertifika + bu girişten türetilen `KeyManager`'lar okunur ve
- *    [TvTlsIdentity.fromKeyManagers] ile sarılır.
+ * İki yol denenir, bu sırayla:
  *
- * Özel/gizli anahtar hiçbir zaman bu kodun eline GEÇMEZ (dışa aktarılmaz) —
- * yalnızca `AndroidKeyStore`'un kendi `KeyManagerFactory` entegrasyonu
- * üzerinden TLS el sıkışmasında KULLANILIR. Bu, AGENTS.md madde 3'ün
- * ("imzalama anahtarı koda/loglara/versiyon kontrolüne asla yazılmaz")
- * ruhuna tam uyumludur — anahtar zaten hiçbir zaman bir dosyaya/log'a
- * YAZILABİLECEK bir biçimde ortaya çıkmaz.
+ * 1. **AndroidKeyStore** (donanım destekli, özel anahtar dışarı çıkarılamaz).
+ * 2. **Uygulamanın özel alanındaki PKCS#12 dosyası** (yazılım anahtarı,
+ *    [TvTlsIdentity.loadOrCreateFromFile]).
  *
- * NOT (dürüstlük ilkesi — gerçek sınır): Bu sınıf, `android.security.keystore`
- * ve `AndroidKeyStore` sağlayıcısının RESMİ, belgeli davranışına dayanır
- * (Android Developers dokümantasyonu) ama bu kum havuzunda bir Android SDK/
- * cihaz OLMADIĞI için GERÇEKTEN ÇALIŞTIRILAMADI/TEST EDİLEMEDİ — ne gerçek
- * bir `AndroidKeyStore` çağrısı yapıldı, ne de üretilen anahtarla gerçek bir
- * TLS el sıkışmasının (farklı cihaz/OEM/Android sürümlerinde) sorunsuz
- * çalıştığı doğrulandı (AndroidKeyStore-destekli anahtarlarla özel TLS
- * sunucuları kurmak, bazı OEM/Android sürüm kombinasyonlarında bilinen
- * uyumluluk tuhaflıkları olan bir alandır). Bu yüzden [loadOrCreate],
- * HERHANGİ bir istisna durumunda (ör. bu cihazda/OEM'de beklenmeyen bir
- * AndroidKeyStore davranışı) sessizce [TvTlsIdentity.generate]'e (geçici,
- * bellek-içi kimlik) DÜŞER — TV hiçbir zaman bu yüzden çökmez ya da
- * kullanılamaz hale gelmez, yalnızca o oturumda "hatırlama" kalıcılığı
- * kaybolur (kullanıcı QR'ı yeniden taramak zorunda kalır). Bu düşüş
- * [Log.w] ile loglanır.
+ * Her iki durumda da üretilen kimlik, GERÇEK bir TLS el sıkışmasıyla
+ * ([TvTlsIdentity.selfTestHandshake]) sınanır ve ancak sınavı geçerse
+ * kullanılır.
+ *
+ * NEDEN öz-test ve yedek yol var (2026-11-14, gerçek cihaz kanıtı):
+ * Profilo 4K Android TV'de (MediaTek, Android 11) AndroidKeyStore anahtarı
+ * sorunsuz ÜRETİLDİ, ama ilk TLS el sıkışmasında Conscrypt'in ihtiyaç
+ * duyduğu ham RSA işlemi cihazın keymaster'ı tarafından reddedildi:
+ *
+ * ```
+ * W CryptoUpcalls: java.security.InvalidKeyException: Keystore operation failed
+ *   Caused by: android.security.KeyStoreException: Incompatible padding mode
+ * W CryptoUpcalls: Could not find provider for algorithm: RSA/ECB/NoPadding
+ *   at ...TvEventServer.handleClient(TvEventServer.kt:171)
+ * ```
+ *
+ * Sonuç: telefon TV'ye HİÇ bağlanamıyordu ve bu, kimlik "başarıyla"
+ * üretildiği için hiçbir yerde hata olarak görünmüyordu. İki düzeltme
+ * yapıldı: (a) anahtar artık ham RSA işlemine izin veren özelliklerle
+ * üretiliyor (`ENCRYPTION_PADDING_NONE`, `DIGEST_NONE`), (b) kimlik
+ * kullanılmadan önce el sıkışmayla sınanıyor ve geçemezse dosya tabanlı
+ * yola düşülüyor. Keymaster'ın kullanılamaz olduğu bir kez anlaşılınca bu
+ * [SharedPreferences]'a yazılır ve sonraki açılışlarda pahalı anahtar
+ * üretimi hiç denenmez.
+ *
+ * NOT: Bu dosya artık ana iş parçacığından ÇAĞRILMAMALI — anahtar üretimi ve
+ * öz-test saniyeler sürebilir (bkz. MainActivity'deki arka plan yüklemesi).
  */
 object PersistentTvIdentity {
     private const val TAG = "PersistentTvIdentity"
     private const val KEYSTORE_PROVIDER = "AndroidKeyStore"
-    private const val ALIAS = "gamletsol-tv-identity"
 
-    // Kendi-imzalı sertifikanın geçerlilik süresi — roadmap'in "kalıcı
-    // güven" beklentisiyle uyumlu, uzun bir süre (gerçek bir TV'nin yıllarca
-    // aynı kimlikle çalışması beklenir). Süre dolduğunda [loadOrCreate]
-    // davranışı bu sınıfta henüz ELE ALINMADI (bilinen, dar bir MVP sınırı —
-    // 10 yıl sonrasının sorunu).
+    // v2: v1 anahtarları ham RSA işlemine izin vermeyen bir spesifikasyonla
+    // üretilmişti (yukarıdaki hata). Alias değiştirilerek o anahtarların
+    // yeniden kullanılması engellenir.
+    private const val ALIAS = "gamletsol-tv-identity-v2"
+    private const val LEGACY_ALIAS = "gamletsol-tv-identity"
+
+    private const val IDENTITY_FILE_NAME = "tv-identity.p12"
+
+    private const val PREFS_NAME = "tv_identity"
+    private const val KEY_KEYSTORE_UNUSABLE = "android_keystore_unusable"
+
+    // Kendi-imzalı sertifikanın geçerlilik süresi — gerçek bir TV'nin
+    // yıllarca aynı kimlikle çalışması beklenir.
     private const val VALIDITY_DAYS = 3650L
 
-    /**
-     * `AndroidKeyStore`'da kalıcı olarak saklanan bir kimlik varsa onu
-     * yükler; yoksa YENİ bir tane üretip saklar ve onu döner. Bir
-     * istisna oluşursa (bkz. sınıf dokümantasyonundaki dürüstlük notu),
-     * GERİYE dönüp geçici (ephemeral) bir [TvTlsIdentity.generate]'e düşer
-     * — bu metod pratikte asla fırlatmaz.
-     */
-    fun loadOrCreate(): TvTlsIdentity {
-        return try {
-            val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER).apply { load(null) }
-            if (!keyStore.containsAlias(ALIAS)) {
-                generateAndStore()
-            }
-            // Yeni üretilen girişi görebilmek için KeyStore'u YENİDEN yükle
-            // (bazı sağlayıcı uygulamalarında aynı örnek, girişi hemen
-            // yansıtmayabilir — tazelenmiş bir örnek kullanmak daha güvenli).
-            val refreshed = KeyStore.getInstance(KEYSTORE_PROVIDER).apply { load(null) }
-            val certificate = refreshed.getCertificate(ALIAS) as X509Certificate
+    fun loadOrCreate(context: Context): TvTlsIdentity {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-            val keyManagerFactory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm()).apply {
-                // AndroidKeyStore girişleri parola KULLANMAZ — `null` doğru kullanımdır.
-                init(refreshed, null)
+        if (!prefs.getBoolean(KEY_KEYSTORE_UNUSABLE, false)) {
+            val keystoreIdentity = runCatching { loadOrCreateFromAndroidKeyStore() }
+                .onFailure { Log.w(TAG, "AndroidKeyStore kimliği yüklenemedi/üretilemedi", it) }
+                .getOrNull()
+
+            if (keystoreIdentity != null && TvTlsIdentity.selfTestHandshake(keystoreIdentity)) {
+                Log.i(TAG, "Donanım destekli (AndroidKeyStore) TV kimliği kullanılıyor")
+                return keystoreIdentity
             }
 
-            val fingerprint = TvTlsIdentity.sha256Hex(certificate.encoded)
-            TvTlsIdentity.fromKeyManagers(certificate, keyManagerFactory.keyManagers, fingerprint)
-        } catch (e: Exception) {
             Log.w(
                 TAG,
-                "AndroidKeyStore'da kalıcı TV kimliği yüklenemedi/üretilemedi — " +
-                    "bu oturum için geçici (ephemeral) bir kimliğe düşülüyor " +
-                    "(hatırlanan TV'ler bu oturumda geçersiz olacak)",
-                e,
+                "AndroidKeyStore kimliği TLS el sıkışmasını geçemedi — bu cihazın keymaster'ı " +
+                    "kullanılamaz kabul edilip dosya tabanlı kalıcı kimliğe geçiliyor (kalıcı karar).",
             )
-            TvTlsIdentity.generate()
+            prefs.edit().putBoolean(KEY_KEYSTORE_UNUSABLE, true).apply()
+            runCatching { deleteKeyStoreAlias(ALIAS) }
         }
+
+        val file = File(context.filesDir, IDENTITY_FILE_NAME)
+        val fileIdentity = runCatching { TvTlsIdentity.loadOrCreateFromFile(file) }
+            .onFailure { Log.w(TAG, "Dosya tabanlı kalıcı TV kimliği yüklenemedi/üretilemedi", it) }
+            .getOrNull()
+
+        if (fileIdentity != null && TvTlsIdentity.selfTestHandshake(fileIdentity)) {
+            Log.i(TAG, "Dosya tabanlı kalıcı TV kimliği kullanılıyor")
+            return fileIdentity
+        }
+
+        Log.w(
+            TAG,
+            "Kalıcı TV kimliği kurulamadı — bu oturum için geçici (ephemeral) kimliğe düşülüyor. " +
+                "Telefondaki 'hatırlanan TV' kaydı bu oturumda geçersiz olacak.",
+        )
+        return TvTlsIdentity.generate()
+    }
+
+    private fun loadOrCreateFromAndroidKeyStore(): TvTlsIdentity {
+        val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER).apply { load(null) }
+        // v1 anahtarı artık kullanılmıyor; yer kaplamasın.
+        if (keyStore.containsAlias(LEGACY_ALIAS)) {
+            runCatching { deleteKeyStoreAlias(LEGACY_ALIAS) }
+        }
+        if (!keyStore.containsAlias(ALIAS)) {
+            generateAndStore()
+        }
+        // Yeni üretilen girişi görebilmek için KeyStore'u YENİDEN yükle
+        // (bazı sağlayıcı uygulamalarında aynı örnek girişi hemen yansıtmaz).
+        val refreshed = KeyStore.getInstance(KEYSTORE_PROVIDER).apply { load(null) }
+        val certificate = refreshed.getCertificate(ALIAS) as X509Certificate
+
+        val keyManagerFactory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm()).apply {
+            // AndroidKeyStore girişleri parola KULLANMAZ — `null` doğru kullanımdır.
+            init(refreshed, null)
+        }
+
+        return TvTlsIdentity.fromKeyManagers(
+            certificate = certificate,
+            keyManagers = keyManagerFactory.keyManagers,
+            fingerprintSha256 = TvTlsIdentity.sha256Hex(certificate.encoded),
+        )
+    }
+
+    private fun deleteKeyStoreAlias(alias: String) {
+        KeyStore.getInstance(KEYSTORE_PROVIDER).apply { load(null) }.deleteEntry(alias)
     }
 
     private fun generateAndStore() {
@@ -117,14 +151,26 @@ object PersistentTvIdentity {
             KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_DECRYPT,
         )
             .setKeySize(2048)
-            // Farklı TLS sürümlerinin/cipher suite'lerin el sıkışma
-            // imzasında kullanabileceği özetlerin GENİŞ bir alt kümesi —
-            // tam olarak hangisinin gerçekte gerekeceği, ancak GERÇEK bir
-            // istemci/sunucu el sıkışmasında ortaya çıkar (bkz. sınıfın
-            // dürüstlük notu, bu kum havuzunda denenemedi).
-            .setDigests(KeyProperties.DIGEST_SHA256, KeyProperties.DIGEST_SHA384, KeyProperties.DIGEST_SHA512)
-            .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
-            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_RSA_PKCS1)
+            // DIGEST_NONE ve ENCRYPTION_PADDING_NONE (2026-11-14): TLS yığını
+            // (Conscrypt) sunucu imzasını kendisi hazırlayıp anahtardan HAM
+            // bir RSA işlemi (`RSA/ECB/NoPadding`) ister. Bu ikisi olmadan
+            // keymaster işlemi "Incompatible padding mode" ile reddediyor ve
+            // el sıkışma çöküyordu.
+            .setDigests(
+                KeyProperties.DIGEST_NONE,
+                KeyProperties.DIGEST_SHA1,
+                KeyProperties.DIGEST_SHA256,
+                KeyProperties.DIGEST_SHA384,
+                KeyProperties.DIGEST_SHA512,
+            )
+            .setSignaturePaddings(
+                KeyProperties.SIGNATURE_PADDING_RSA_PKCS1,
+                KeyProperties.SIGNATURE_PADDING_RSA_PSS,
+            )
+            .setEncryptionPaddings(
+                KeyProperties.ENCRYPTION_PADDING_NONE,
+                KeyProperties.ENCRYPTION_PADDING_RSA_PKCS1,
+            )
             .setCertificateSubject(X500Principal("CN=gamletsol-tv"))
             .setCertificateSerialNumber(BigInteger.ONE)
             .setCertificateNotBefore(now)

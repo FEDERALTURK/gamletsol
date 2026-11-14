@@ -50,7 +50,10 @@ import com.federalturk.gamletsol.core.transport.TvCapabilities
 import com.federalturk.gamletsol.core.transport.TvEventServer
 import com.federalturk.gamletsol.core.transport.TvNsdAttributes
 import com.federalturk.gamletsol.core.transport.TvTlsIdentity
+import com.federalturk.gamletsol.core.transport.TvTlsIdentity
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -219,10 +222,16 @@ private fun TvProbeScreen() {
     // v2: kopan telefonun yeni QR okutmadan geri bağlanabilmesi için.
     val resumeTokens = remember { ResumeTokenRegistry() }
 
-    // G024/G029: TLS kimliği — AndroidKeyStore'da KALICI (bkz.
-    // PersistentTvIdentity dokümantasyonu); herhangi bir hatada sessizce
-    // geçici kimliğe düşer.
-    val tlsIdentity = remember { PersistentTvIdentity.loadOrCreate() }
+    // G024/G029: TLS kimliği — kalıcı (bkz. PersistentTvIdentity).
+    // 2026-11-14: Artık ARKA PLANDA yükleniyor. Gerekçe: gerçek bir TV'de
+    // açılışta 263 kare atlandığı (~4,4 sn donma) ölçüldü; RSA anahtar
+    // üretimi + TLS öz-testi ana iş parçacığında yapılıyordu. Kimlik hazır
+    // olana kadar sunucu başlatılmaz ve ekranda "Hazırlanıyor" yazar.
+    var tlsIdentity by remember { mutableStateOf<TvTlsIdentity?>(null) }
+    LaunchedEffect(Unit) {
+        tlsIdentity = withContext(Dispatchers.IO) { PersistentTvIdentity.loadOrCreate(context) }
+    }
+    val identityFingerprint = tlsIdentity?.fingerprintSha256Hex
 
     // G025: NSD/mDNS reklamcısı — kod her değiştiğinde yeniden kaydedilir.
     val nsdAdvertiser = remember { TvNsdAdvertiser(context) }
@@ -243,10 +252,11 @@ private fun TvProbeScreen() {
     // (2026-11-10) Teknik/debug satırları yalnız Test modunda.
     var testModeEnabled by remember { mutableStateOf(false) }
 
-    DisposableEffect(Unit) {
+    DisposableEffect(tlsIdentity) {
+        val identity = tlsIdentity ?: return@DisposableEffect onDispose { }
         currentToken = pairingRegistry.issue()
         val server = TvEventServer(
-            tlsIdentity = tlsIdentity,
+            tlsIdentity = identity,
             validatePairingCode = { code -> pairingRegistry.validateAndConsume(code) == PairingResult.VALID },
             validateResumeToken = resumeTokens::validateAndConsume,
             issueResumeToken = resumeTokens::issue,
@@ -277,15 +287,16 @@ private fun TvProbeScreen() {
     }
 
     // G025: eşleştirme kodu her değiştiğinde NSD reklamını yenile.
-    LaunchedEffect(currentToken, serverPort) {
+    LaunchedEffect(currentToken, serverPort, identityFingerprint) {
         val port = serverPort
         val token = currentToken
-        if (port != null && token != null) {
+        val fingerprint = identityFingerprint
+        if (port != null && token != null && fingerprint != null) {
             nsdAdvertiser.restart(
                 port = port,
                 attributes = TvNsdAttributes(
                     pairingCode = token.value,
-                    fingerprintSha256 = tlsIdentity.fingerprintSha256Hex,
+                    fingerprintSha256 = fingerprint,
                     protocolVersion = TvCapabilities.CURRENT.protocolVersion,
                 ),
                 onServiceNameChanged = { name -> nsdServiceName = name },
@@ -309,7 +320,9 @@ private fun TvProbeScreen() {
     }
 
     LaunchedEffect(Unit) {
-        val result = TvInputBridge.discoverInputs(context)
+        // Arka planda: gerçek TV'de 9 giriş tarandı ve bu ana iş parçacığını
+        // bloke ediyordu (bkz. yukarıdaki donma notu).
+        val result = withContext(Dispatchers.IO) { TvInputBridge.discoverInputs(context) }
         discoveredInputs = result.inputs
         discoveryError = result.error
         val savedInputId = GameViewPrefs.inputId(context)
@@ -318,6 +331,34 @@ private fun TvProbeScreen() {
     }
 
     val hdmiInputs = discoveredInputs.filter { it.isHdmi && it.isPassthrough }
+
+    // Sinyalsiz HDMI girişini otomatik atla (2026-11-14, gerçek cihaz):
+    // TV'de 4 HDMI girişi bulundu, uygulama HDMI 4'ü seçti ve orada sinyal
+    // yoktu (onVideoUnavailable reason=2) — kullanıcı elle "Giriş" düğmesine
+    // basana kadar siyah ekran görüyordu. Artık sinyal gelmeyen girişten
+    // sıradakine kendiliğinden geçilir; liste bir kez dolaşılır, sonsuz
+    // döngüye girilmez. Kullanıcı elle bir giriş seçerse otomatik geçiş
+    // durur (seçimine saygı).
+    var autoScanTriedInputIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var userPickedInput by remember { mutableStateOf(false) }
+
+    LaunchedEffect(tuneStatus, selectedInput, userPickedInput) {
+        val current = selectedInput ?: return@LaunchedEffect
+        if (userPickedInput || hdmiInputs.size < 2) return@LaunchedEffect
+        if (tuneStatus != TuneStatus.VIDEO_UNAVAILABLE && tuneStatus != TuneStatus.CONNECTION_FAILED) {
+            return@LaunchedEffect
+        }
+        // Sinyal gelmesi için kısa bir şans ver (HDMI el sıkışması zaman alır).
+        delay(AUTO_SCAN_SETTLE_MILLIS)
+        if (tuneStatus != TuneStatus.VIDEO_UNAVAILABLE && tuneStatus != TuneStatus.CONNECTION_FAILED) {
+            return@LaunchedEffect
+        }
+        val tried = autoScanTriedInputIds + current.inputId
+        val next = hdmiInputs.firstOrNull { it.inputId !in tried } ?: return@LaunchedEffect
+        autoScanTriedInputIds = tried
+        selectedInput = next
+        GameViewPrefs.setInputId(context, next.inputId)
+    }
     val showGameView = selectedInput != null && (testModeEnabled || (phoneConnected && gameViewEnabled))
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
@@ -378,6 +419,7 @@ private fun TvProbeScreen() {
                         val currentIndex = hdmiInputs.indexOf(selectedInput)
                         val next = hdmiInputs[(currentIndex + 1) % hdmiInputs.size]
                         selectedInput = next
+                        userPickedInput = true
                         GameViewPrefs.setInputId(context, next.inputId)
                     }) {
                         Text("Giriş: ${selectedInput?.label ?: selectedInput?.inputId ?: "?"}")
@@ -439,6 +481,13 @@ private fun TvProbeScreen() {
                             fontSize = captionFontSize,
                         )
                     }
+                    if (tlsIdentity == null) {
+                        Text(
+                            text = "Hazırlanıyor… (güvenli bağlantı kimliği kuruluyor)",
+                            color = Color(0xFFFFD54F),
+                            fontSize = captionFontSize,
+                        )
+                    }
                     Text(
                         text = "Telefonunuzda GAMLETSOL'u açın → menü (⋮) → " +
                             "\"TV'ye Yansıt\" → \"QR ile tara\"",
@@ -473,14 +522,15 @@ private fun TvProbeScreen() {
                     )
                     val ip = localIp
                     val port = serverPort
-                    if (ip != null && port != null) {
+                    val fingerprint = identityFingerprint
+                    if (ip != null && port != null && fingerprint != null) {
                         // QR, IP/port/kod + TLS fingerprint'i taşır (G023/G024).
                         // Kodlama hatasında QR gösterilmez; kod metni zaten yukarıda.
                         val payload = PairingQrPayload(
                             host = ip,
                             port = port,
                             code = token.value,
-                            fingerprintSha256 = tlsIdentity.fingerprintSha256Hex,
+                            fingerprintSha256 = fingerprint,
                         )
                         val matrix = runCatching { QrMatrixEncoder.encode(payload.encode()) }.getOrNull()
                         if (matrix != null) {
@@ -558,6 +608,9 @@ private fun TvProbeScreen() {
         }
     }
 }
+
+/** Sinyalsiz girişten sıradakine geçmeden önce beklenen süre. */
+private const val AUTO_SCAN_SETTLE_MILLIS = 2_500L
 
 private fun TuneStatus.isFailure(): Boolean =
     this == TuneStatus.CONNECTION_FAILED || this == TuneStatus.VIDEO_UNAVAILABLE || this == TuneStatus.DISCONNECTED

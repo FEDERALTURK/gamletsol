@@ -32,9 +32,12 @@ class PairingTokenGeneratorTest {
     }
 
     @Test
-    fun `default ttl matches the planned 60 second QR expiry`() {
+    fun `default ttl matches the 5 minute QR expiry`() {
+        // 2026-11-14: 60 sn'den 5 dk'ya çıkarıldı — bkz.
+        // PairingToken.DEFAULT_TTL_MILLIS KDoc'u (gerçek TV'de kodun her
+        // dakika yenilenmesi NSD kaydını da her dakika yeniliyordu).
         val token = PairingTokenGenerator.generate(nowMillis = 1_000L)
-        assertFalse(token.isExpiredAt(1_000L + 59_000L))
-        assertTrue(token.isExpiredAt(1_000L + 60_000L))
+        assertFalse(token.isExpiredAt(1_000L + 299_000L))
+        assertTrue(token.isExpiredAt(1_000L + 300_000L))
     }
 }

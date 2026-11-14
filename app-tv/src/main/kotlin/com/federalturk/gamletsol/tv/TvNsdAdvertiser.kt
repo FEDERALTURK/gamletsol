@@ -42,6 +42,14 @@ class TvNsdAdvertiser(private val context: Context) {
     var registeredServiceName: String? = null
         private set
 
+    // En son BAŞARIYLA kaydedilen (port, attributes) çifti. Gerçek bir TV'de
+    // (2026-11-14) eşleştirme kodu kendiliğinden yenilendikçe NSD'nin de
+    // dakikada bir yeniden kaydedildiği görüldü ("NSD servisi kaydedildi"
+    // satırı her 60 sn'de bir); bu, telefonun keşif listesini sürekli
+    // sıfırlıyor ve ağda gereksiz trafik üretiyordu. Aynı içerikle gelen
+    // tekrar istekleri artık atlanıyor.
+    private var registeredKey: Pair<Int, TvNsdAttributes>? = null
+
     /**
      * [onServiceNameChanged] her değiştiğinde (kayıt/kaldırma/hata) ÇAĞRILIR,
      * ana iş parçacığında (NsdManager'ın geri çağrıları farklı bir iş
@@ -94,20 +102,29 @@ class TvNsdAdvertiser(private val context: Context) {
             }
         }
         registrationListener = listener
+        registeredKey = port to attributes
         runCatching { manager.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, listener) }
             .onFailure {
                 Log.w(TAG, "NSD registerService çağrısı istisna fırlattı", it)
+                registeredKey = null
                 update(null)
             }
     }
 
-    fun restart(port: Int, attributes: TvNsdAttributes, onServiceNameChanged: (String?) -> Unit = {}) =
+    /**
+     * Kayıt zaten AYNI port ve aynı attributes ile duruyorsa hiçbir şey
+     * yapmaz; yalnız gerçekten değişiklik varsa yeniden kaydeder.
+     */
+    fun restart(port: Int, attributes: TvNsdAttributes, onServiceNameChanged: (String?) -> Unit = {}) {
+        if (registeredKey == (port to attributes) && registeredServiceName != null) return
         start(port, attributes, onServiceNameChanged)
+    }
 
     fun stop() {
         val manager = nsdManager ?: return
         val listener = registrationListener ?: return
         registrationListener = null
+        registeredKey = null
         runCatching { manager.unregisterService(listener) }
         registeredServiceName = null
     }
