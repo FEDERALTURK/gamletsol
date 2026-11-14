@@ -2,6 +2,7 @@ package com.federalturk.gamletsol.tv
 
 import android.media.tv.TvView
 import android.os.Bundle
+import android.util.Log
 import com.federalturk.gamletsol.core.pairing.ResumeTokenRegistry
 import android.view.WindowManager
 import android.os.Looper
@@ -279,9 +280,15 @@ private fun TvProbeScreen() {
         ) { cue -> mainHandler.post { receivedCue = cue } }
         server.start()
         serverPort = server.boundPort
+        // 2026-11-14 saha teşhisi: sunucunun başladığına dair hiçbir log yoktu;
+        // gerçek TV'de "TLS sunucu çalışıyor mu?" sorusu ancak /proc/net/tcp6
+        // çekilerek cevaplanabildi. Tek satırlık bu log, logcat'ten doğrudan
+        // doğrulamayı mümkün kılar (gizlilik: yalnız port numarası loglanır).
+        Log.i("GamletsolTvServer", "TLS altyazı sunucusu başladı, port=${server.boundPort}")
         onDispose {
             server.stop()
             nsdAdvertiser.stop()
+            Log.i("GamletsolTvServer", "TLS altyazı sunucusu durduruldu")
         }
     }
 

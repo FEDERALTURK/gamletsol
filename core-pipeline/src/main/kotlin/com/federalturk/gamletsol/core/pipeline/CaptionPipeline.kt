@@ -73,6 +73,18 @@ class CaptionPipeline(
     private var consecutiveEmptyFrames = 0
     private var activeCue: Cue? = null
 
+    // 2026-11-14 saha teşhisi (gerçek telefon + gerçek TV): "OCR boş kare"
+    // yalnız İLK boş karede loglanır; kamera hiç metin görmüyorsa (ör. masada
+    // yüzüstü duran telefon) hat dakikalarca TEK satır bile yazmaz ve logcat
+    // tamponu ML Kit'in ~30fps iç (PipelineManager) loglarıyla dolup o tek
+    // satır kaybolur — hattın çalışıp çalışmadığı dışarıdan ayırt edilemedi.
+    // Bu sayaçlar her [HEARTBEAT_FRAME_INTERVAL] karede bir TEK satırlık özet
+    // loglar; logger boş (varsayılan) ise maliyeti birkaç sayaç artımıdır.
+    private var heartbeatFrames = 0
+    private var heartbeatThrottled = 0
+    private var heartbeatEmpty = 0
+    private var heartbeatWithText = 0
+
     // Aktif cue'nun çevirisi üretilirken geçerli olan cacheVersionTag. Etiket
     // değişirse (ör. kullanıcı çeviri kütüphanesine düzeltme ekledi) ekranda
     // DURAN aynı satır da yeniden çevrilir — yoksa düzeltme ancak satır
@@ -97,6 +109,7 @@ class CaptionPipeline(
             // G036: cihaz yük altında/ısınmışsa bu kare OCR'a HİÇ verilmez —
             // doğrudan serbest bırakılır (bkz. AdaptiveFrameThrottle KDoc'u).
             frame.image.release()
+            heartbeatTick(throttled = true)
             return
         }
 
@@ -119,9 +132,11 @@ class CaptionPipeline(
             if (consecutiveEmptyFrames > maxConsecutiveEmptyFrames) {
                 pendingCandidate = null
             }
+            heartbeatTick(empty = true)
             return
         }
         consecutiveEmptyFrames = 0
+        heartbeatTick(withText = true)
 
         val candidate = pendingCandidate
         if (candidate != null && isStableMatch(candidate.text, normalized)) {
@@ -217,6 +232,30 @@ class CaptionPipeline(
         return translated
     }
 
+    /**
+     * Periyodik teşhis özeti — her [HEARTBEAT_FRAME_INTERVAL] karede bir
+     * (işlenen + atlanan dahil) hattın canlı olduğunu ve karelerin hangi
+     * aşamada elendiğini tek satırda raporlar. Örnek:
+     * `Durum: 300 karede 0 metinli, 280 boş, 20 atlandı; aday=false aktifCue=false`
+     * → kamera açık ama OCR hiç metin görmüyor (altyazıya doğrultulmamış).
+     */
+    private fun heartbeatTick(throttled: Boolean = false, empty: Boolean = false, withText: Boolean = false) {
+        heartbeatFrames++
+        if (throttled) heartbeatThrottled++
+        if (empty) heartbeatEmpty++
+        if (withText) heartbeatWithText++
+        if (heartbeatFrames >= HEARTBEAT_FRAME_INTERVAL) {
+            logger(
+                "Durum: $heartbeatFrames karede $heartbeatWithText metinli, $heartbeatEmpty boş, " +
+                    "$heartbeatThrottled atlandı; aday=${pendingCandidate != null} aktifCue=${activeCue != null}",
+            )
+            heartbeatFrames = 0
+            heartbeatThrottled = 0
+            heartbeatEmpty = 0
+            heartbeatWithText = 0
+        }
+    }
+
     private fun expireActiveCueIfNeeded() {
         val cue = activeCue ?: return
         if (cue.isExpiredAt(clock())) {
@@ -251,5 +290,12 @@ class CaptionPipeline(
 
         /** Oturum içi çeviri cache'inin üst sınırı (girdi sayısı). */
         const val DEFAULT_TRANSLATION_CACHE_SIZE = 512
+
+        /**
+         * Kaç karede bir teşhis özeti loglanacağı. ~30fps kamerada ≈10 sn'ye
+         * denk gelir (varsayım, ölçüm değil); logcat'i boğmayacak kadar
+         * seyrek, "hat canlı mı?" sorusuna cevap verecek kadar sık.
+         */
+        const val HEARTBEAT_FRAME_INTERVAL = 300
     }
 }
