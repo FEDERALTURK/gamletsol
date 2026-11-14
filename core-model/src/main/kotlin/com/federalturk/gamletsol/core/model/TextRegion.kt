@@ -20,8 +20,14 @@ data class TextRegion(
     }
 
     companion object {
-        /** Altyazı modu için varsayılan ROI: ekranın alt ~%22'si, kenarlardan içeride. */
-        val DEFAULT_SUBTITLE_BAND = TextRegion(left = 0.08f, top = 0.74f, right = 0.92f, bottom = 0.96f)
+        /**
+         * Altyazı modu için varsayılan ROI: ekranın alt ~%32'si, kenarlardan içeride.
+         * 2026-11-14: top 0.74→0.64 genişletildi. Kamera ile TV'ye doğrultmada
+         * kullanıcı telefonu tam hizalamayabilir veya bazı oyunlarda altyazı
+         * bandı ekranın ortasına yakın olabilir — eski dar bant (%22) bu
+         * durumlarda altyazıyı kaçırıyordu.
+         */
+        val DEFAULT_SUBTITLE_BAND = TextRegion(left = 0.05f, top = 0.64f, right = 0.95f, bottom = 0.98f)
 
         /** Akıllı Ekran modu için tüm kare. */
         val FULL_FRAME = TextRegion(left = 0f, top = 0f, right = 1f, bottom = 1f)

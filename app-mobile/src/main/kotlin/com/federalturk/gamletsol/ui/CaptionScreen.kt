@@ -631,8 +631,8 @@ private fun BoxScope.StatusChip(status: PipelineStatus, voiceStatusMessage: Stri
     // Ekranın ÜSTÜNDE gösterilir: alt kısım, altyazının nişan alınacağı bant.
     val text = when (status) {
         PipelineStatus.STARTING -> "Başlatılıyor…"
-        PipelineStatus.DOWNLOADING_TRANSLATION_MODEL -> "Çeviri modeli indiriliyor (yalnızca ilk sefer, Wi-Fi gerekir)…"
-        PipelineStatus.MODEL_DOWNLOAD_FAILED -> "Çeviri modeli indirilemedi — Wi-Fi'ye bağlanın, otomatik olarak yeniden denenecek"
+        PipelineStatus.DOWNLOADING_TRANSLATION_MODEL -> "Çeviri modeli indiriliyor (yalnızca ilk sefer, internet gerekir)…"
+        PipelineStatus.MODEL_DOWNLOAD_FAILED -> "Çeviri modeli indirilemedi — internet bağlantınızı kontrol edin, otomatik olarak yeniden denenecek"
         PipelineStatus.SCANNING -> "Kamerayı İngilizce altyazının göründüğü ekrana doğrultun — altyazı aranıyor…"
     }
     Column(

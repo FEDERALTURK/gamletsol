@@ -33,9 +33,24 @@ class MlKitTranslator : Translator {
      * haritasındaki maliyet/veri kullanımı farkındalığıyla varsayılan olarak
      * açıktır — kullanıcı isterse kapatabilir (ileride ayarlar ekranı).
      */
-    suspend fun ensureModelDownloaded(requireWifiOnly: Boolean = true) {
+    /**
+     * Modeli indirir (henüz indirilmediyse). İlk denemede Wi-Fi şartı arar;
+     * başarısız olursa (Wi-Fi yok / model büyük) ikinci denemede herhangi bir
+     * ağ bağlantısıyla yeniden dener — kullanıcının mobil verideyken hiç çeviri
+     * alamaması önlenir (2026-11-14 düzeltmesi).
+     */
+    suspend fun ensureModelDownloaded() {
+        // Önce Wi-Fi ile dene (kullanıcının mobil verisini korur).
+        val wifiResult = runCatching { downloadModel(requireWifi = true) }
+        if (wifiResult.isSuccess) return
+
+        // Wi-Fi yoksa herhangi bir ağ ile yeniden dene.
+        downloadModel(requireWifi = false)
+    }
+
+    private suspend fun downloadModel(requireWifi: Boolean) {
         val conditionsBuilder = DownloadConditions.Builder()
-        if (requireWifiOnly) conditionsBuilder.requireWifi()
+        if (requireWifi) conditionsBuilder.requireWifi()
 
         suspendCancellableCoroutine<Unit> { continuation ->
             englishToTurkish.downloadModelIfNeeded(conditionsBuilder.build())

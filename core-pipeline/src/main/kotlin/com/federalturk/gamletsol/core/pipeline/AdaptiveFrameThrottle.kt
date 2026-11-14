@@ -66,9 +66,22 @@ class AdaptiveFrameThrottle(
                 skipFactor++
                 recentDurationsMillis.clear() // yeni skipFactor'ü kendi penceresiyle yeniden değerlendir
             }
-            averageMillis < targetFrameBudgetMillis * RECOVER_RATIO && skipFactor > 1 -> {
-                skipFactor--
-                recentDurationsMillis.clear()
+            // 2026-11-14 düzeltme: Eski kural, geri düşmek için işlem
+            // süresinin BÜTÇENİN %80'ine inmesini istiyordu. Ancak OCR süresi
+            // cihazın donanımına bağlı SABİT bir maliyet — skipFactor artınca
+            // işlenen kare sayısı düşer ama her işlenen karenin süresi aynı
+            // kalır, bu yüzden ortalama hiç düşmez ve geri toparlanma ASLA
+            // olmaz. Yeni kural: skipFactor > 1 iken periyodik olarak bir
+            // kademe düşürüp dene; eğer yük hâlâ yüksekse bir sonraki pencere
+            // tekrar artırır. Bu, "dene ve geri çekil" yaklaşımı ile cihazın
+            // gerçek kapasitesini sürekli yeniden değerlendirmesini sağlar.
+            skipFactor > 1 -> {
+                // Ortalama en azından bütçenin altındaysa (skip sayesinde
+                // cihaz nefes alıyorsa) bir kademe düşür.
+                if (averageMillis <= targetFrameBudgetMillis * OVERLOAD_RATIO) {
+                    skipFactor--
+                    recentDurationsMillis.clear()
+                }
             }
         }
     }

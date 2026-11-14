@@ -114,11 +114,13 @@ class CaptionPipelineRobustnessTest {
 
     @Test
     fun `a long run of empty frames still discards the pending candidate`() = runTest {
-        val recognizer = FakeTextRecognizer(mutableListOf("Hello there", null, null, null, "Hello there"))
+        // DEFAULT_MAX_CONSECUTIVE_EMPTY_FRAMES = 4 olduğu için 5 ardışık boş
+        // kare gerekir (4'ten fazla) ki aday silinsin.
+        val recognizer = FakeTextRecognizer(mutableListOf("Hello there", null, null, null, null, null, "Hello there"))
         val sink = RecordingSubtitleSink()
         val p = pipeline(recognizer, FakeTranslator(), sink)
 
-        repeat(5) { p.onFrame(testFrame(frameId = it.toLong() + 1)) }
+        repeat(7) { p.onFrame(testFrame(frameId = it.toLong() + 1)) }
 
         assertTrue("Uzun bir boşluktan sonra tek bir okuma henüz kararlı sayılmamalı", sink.shown.isEmpty())
     }

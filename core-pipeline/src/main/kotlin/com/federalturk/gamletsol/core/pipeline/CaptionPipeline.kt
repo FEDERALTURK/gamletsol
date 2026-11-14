@@ -64,6 +64,10 @@ class CaptionPipeline(
     // Çeviri hatalarını gözlemlemek için (ör. UI'da "çeviri modeli hazır
     // değil" göstermek). Hattın kendisi hatayı yutar ve devam eder.
     private val onTranslationError: (Throwable) -> Unit = {},
+    // 2026-11-14: Teşhis logları — "çeviri yapmıyor" şikâyetlerinde sorunun
+    // hangi aşamada olduğunu (OCR boş mu, kararlılık geçmiyor mu, çeviri
+    // hatası mı) belirlemek için. Android tarafı bunu Log.d'ye bağlar.
+    private val logger: (String) -> Unit = {},
 ) {
     private var pendingCandidate: PendingCandidate? = null
     private var consecutiveEmptyFrames = 0
@@ -108,11 +112,10 @@ class CaptionPipeline(
         val normalized = recognized?.text?.let(TextNormalizer::normalize).orEmpty()
 
         if (normalized.isEmpty()) {
-            // Ekranda okunabilir metin yok (ara sahne, diyalogsuz an) YA DA
-            // bu kare bulanık/okunamadı. Tek bir boş kare yüzünden bekleyen
-            // adayı atmayız; ancak ardışık boş kareler eşiği aşınca atarız.
-            // Aktif cue'nun TTL'i her durumda doğal yoldan biter.
             consecutiveEmptyFrames++
+            if (consecutiveEmptyFrames == 1) {
+                logger("OCR boş kare (bulanık/altyazısız sahne)")
+            }
             if (consecutiveEmptyFrames > maxConsecutiveEmptyFrames) {
                 pendingCandidate = null
             }
@@ -122,9 +125,16 @@ class CaptionPipeline(
 
         val candidate = pendingCandidate
         if (candidate != null && isStableMatch(candidate.text, normalized)) {
+            logger("Kararlı metin: \"${normalized.take(60)}\"")
             pendingCandidate = null
             emitStableText(normalized, frame)
         } else {
+            if (candidate != null) {
+                val sim = TextSimilarity.similarity(candidate.text, normalized)
+                logger("Kararsız: sim=%.2f eşik=%.2f önceki=\"${candidate.text.take(40)}\" şimdi=\"${normalized.take(40)}\"".format(sim, stabilityThreshold))
+            } else {
+                logger("İlk aday: \"${normalized.take(60)}\"")
+            }
             pendingCandidate = PendingCandidate(text = normalized, frame = frame.ref)
         }
     }
@@ -195,10 +205,14 @@ class CaptionPipeline(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            logger("Çeviri hatası: ${e::class.simpleName}: ${e.message?.take(80)}")
             onTranslationError(e)
             return null
         }
-        if (translated.isBlank()) return null
+        if (translated.isBlank()) {
+            logger("Çeviri boş döndü: \"${text.take(60)}\"")
+            return null
+        }
         translationCache[cacheKey] = translated
         return translated
     }
@@ -216,11 +230,24 @@ class CaptionPipeline(
     private data class PendingCandidate(val text: String, val frame: FrameRef)
 
     companion object {
-        /** Deneyimsel başlangıç değeri; gerçek cihazda hiç ölçülmedi (bkz. kök README "Doğrulama durumu"). */
-        const val DEFAULT_STABILITY_THRESHOLD = 0.82f
+        /**
+         * 2026-11-14: 0.82 → 0.70 düşürüldü. Kamera ile TV ekranına doğrultmada
+         * OCR çıktısı kareler arası çok değişken oluyor (titreme, odak kayması,
+         * ışık yansıması): %82 eşik, altyazı ekrandayken bile iki ardışık karede
+         * "kararlı" kabul edilmesini engelliyordu — çeviri HİÇ tetiklenmiyordu.
+         * %70 hâlâ rastgele gürültüyü (tamamen farklı sahne) süzer, ama gerçek
+         * altyazıda küçük OCR farklarını tolere eder.
+         * Varsayım, ölçüm değil — gerçek cihaz ölçümü yapılmadı.
+         */
+        const val DEFAULT_STABILITY_THRESHOLD = 0.70f
 
-        /** Bekleyen aday silinmeden önce tolere edilen ardışık boş kare sayısı (varsayım, ölçüm değil). */
-        const val DEFAULT_MAX_CONSECUTIVE_EMPTY_FRAMES = 2
+        /**
+         * Bekleyen aday silinmeden önce tolere edilen ardışık boş kare sayısı.
+         * 2026-11-14: 2→4 artırıldı. Kamerayla TV ekranına doğrultmada ara sıra
+         * odak kaybı / ışık yansıması / titreme 2-3 ardışık boş kare üretebilir;
+         * eski değer bunlarda adayı erken siliyordu. Varsayım, ölçüm değil.
+         */
+        const val DEFAULT_MAX_CONSECUTIVE_EMPTY_FRAMES = 4
 
         /** Oturum içi çeviri cache'inin üst sınırı (girdi sayısı). */
         const val DEFAULT_TRANSLATION_CACHE_SIZE = 512

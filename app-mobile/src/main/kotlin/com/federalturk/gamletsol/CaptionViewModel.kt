@@ -24,6 +24,7 @@ import com.federalturk.gamletsol.translate.TranslationLibraryStore
 import com.federalturk.gamletsol.tv.TvLinkState
 import com.federalturk.gamletsol.tv.TvRelaySubtitleSink
 import com.federalturk.gamletsol.ui.PhoneScreenSubtitleSink
+import android.util.Log
 import java.util.concurrent.Executors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -325,6 +326,7 @@ class CaptionViewModel(application: Application) : AndroidViewModel(application)
                         _pipelineStatus.value = PipelineStatus.DOWNLOADING_TRANSLATION_MODEL
                     }
                 },
+                logger = { msg -> Log.d("GamletsolPipeline", msg) },
             )
             pipeline.run()
         }
