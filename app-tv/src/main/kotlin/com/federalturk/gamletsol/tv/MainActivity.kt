@@ -50,7 +50,6 @@ import com.federalturk.gamletsol.core.transport.TvCapabilities
 import com.federalturk.gamletsol.core.transport.TvEventServer
 import com.federalturk.gamletsol.core.transport.TvNsdAttributes
 import com.federalturk.gamletsol.core.transport.TvTlsIdentity
-import com.federalturk.gamletsol.core.transport.TvTlsIdentity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
